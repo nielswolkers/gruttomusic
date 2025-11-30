@@ -18,12 +18,12 @@ export default function Callback() {
           description: error,
           variant: 'destructive',
         });
-        navigate('/');
+        navigate('/instellingen');
         return;
       }
 
       if (!code) {
-        navigate('/');
+        navigate('/dashboard');
         return;
       }
 
@@ -31,9 +31,9 @@ export default function Callback() {
         await getAccessToken(code);
         toast({
           title: 'Login Successful',
-          description: 'Welcome to Grutto Player!',
+          description: 'Welcome to Grutto!',
         });
-        navigate('/player');
+        navigate('/dashboard');
       } catch (error) {
         console.error('Error getting access token:', error);
         toast({
@@ -41,7 +41,7 @@ export default function Callback() {
           description: 'Failed to complete login. Please try again.',
           variant: 'destructive',
         });
-        navigate('/');
+        navigate('/instellingen');
       }
     };
 
@@ -52,7 +52,7 @@ export default function Callback() {
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="text-center">
         <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mb-4"></div>
-        <p className="text-muted-foreground">Inloggen...</p>
+        <p className="text-muted-foreground">Verbinden met Spotify...</p>
       </div>
     </div>
   );
