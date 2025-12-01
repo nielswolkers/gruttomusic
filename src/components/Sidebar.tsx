@@ -1,29 +1,17 @@
-import { useState } from 'react';
 import { Home, Calendar, Clock, BarChart3, CheckSquare, FileText, Bell, User } from 'lucide-react';
 import { NavLink } from './NavLink';
 import gruttoLogo from '@/assets/grutto-logo.png';
 
-interface SidebarProps {
-  collapsed?: boolean;
-}
-
-export function Sidebar({ collapsed = false }: SidebarProps) {
+export function Sidebar() {
   return (
     <aside className="hidden md:flex h-screen bg-sidebar border-r border-sidebar-border flex-col overflow-hidden">
       {/* Logo */}
-      <div className="p-6 flex-shrink-0 overflow-hidden">
-        <img 
-          src={gruttoLogo} 
-          alt="Grutto" 
-          className="h-8 w-auto transition-transform duration-300" 
-          style={{
-            transform: collapsed ? 'translateX(-100%)' : 'translateX(0)'
-          }}
-        />
+      <div className="p-6 flex-shrink-0">
+        <img src={gruttoLogo} alt="Grutto" className="h-8 w-auto" />
       </div>
 
       {/* Menu */}
-      <nav className="flex-1 px-3 overflow-hidden">
+      <nav className="flex-1 px-3 overflow-y-auto">
         <p className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Menu
         </p>
@@ -33,8 +21,8 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
           >
-            <Home className="w-5 h-5 flex-shrink-0" />
-            <span className={`transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0' : 'opacity-100'}`}>Home</span>
+            <Home className="w-5 h-5" />
+            <span>Home</span>
           </NavLink>
           
           <NavLink 
@@ -42,8 +30,8 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
           >
-            <Calendar className="w-5 h-5 flex-shrink-0" />
-            <span className={`transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0' : 'opacity-100'}`}>Agenda</span>
+            <Calendar className="w-5 h-5" />
+            <span>Agenda</span>
           </NavLink>
           
           <NavLink 
@@ -51,8 +39,8 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
           >
-            <Clock className="w-5 h-5 flex-shrink-0" />
-            <span className={`transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0' : 'opacity-100'}`}>Studie</span>
+            <Clock className="w-5 h-5" />
+            <span>Studie</span>
           </NavLink>
           
           <NavLink 
@@ -60,8 +48,8 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
           >
-            <BarChart3 className="w-5 h-5 flex-shrink-0" />
-            <span className={`transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0' : 'opacity-100'}`}>Cijfers</span>
+            <BarChart3 className="w-5 h-5" />
+            <span>Cijfers</span>
           </NavLink>
           
           <NavLink 
@@ -69,8 +57,8 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
           >
-            <CheckSquare className="w-5 h-5 flex-shrink-0" />
-            <span className={`transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0' : 'opacity-100'}`}>Taken</span>
+            <CheckSquare className="w-5 h-5" />
+            <span>Taken</span>
           </NavLink>
           
           <NavLink 
@@ -78,8 +66,8 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
           >
-            <FileText className="w-5 h-5 flex-shrink-0" />
-            <span className={`transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0' : 'opacity-100'}`}>Bestanden</span>
+            <FileText className="w-5 h-5" />
+            <span>Bestanden</span>
           </NavLink>
         </div>
       </nav>
@@ -91,9 +79,9 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors relative"
           activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
         >
-          <Bell className="w-5 h-5 flex-shrink-0" />
-          <span className={`transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0' : 'opacity-100'}`}>Meldingen</span>
-          <span className={`ml-auto bg-destructive text-destructive-foreground text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center transition-opacity duration-200 ${collapsed ? 'opacity-0' : 'opacity-100'}`}>
+          <Bell className="w-5 h-5" />
+          <span>Meldingen</span>
+          <span className="ml-auto bg-destructive text-destructive-foreground text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
             3
           </span>
         </NavLink>
@@ -103,8 +91,8 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
           activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
         >
-          <User className="w-5 h-5 flex-shrink-0" />
-          <span className={`transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0' : 'opacity-100'}`}>Account</span>
+          <User className="w-5 h-5" />
+          <span>Account</span>
         </NavLink>
       </div>
     </aside>

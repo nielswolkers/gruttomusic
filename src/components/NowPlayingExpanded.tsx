@@ -49,9 +49,7 @@ export function NowPlayingExpanded({
   const [slideIn, setSlideIn] = useState(false);
   const [coverFlip, setCoverFlip] = useState(false);
   const [prevTrackId, setPrevTrackId] = useState(currentTrack.id);
-  const [bgGradient, setBgGradient] = useState('linear-gradient(135deg, rgba(25, 55, 42, 0.95) 0%, rgba(17, 38, 30, 1) 100%)');
-  const [showControls, setShowControls] = useState(true);
-  const [mouseTimeout, setMouseTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [bgGradient, setBgGradient] = useState('linear-gradient(135deg, rgba(62, 139, 104, 0.4) 0%, rgba(42, 95, 74, 0.6) 100%)');
 
   useEffect(() => {
     setSlideIn(true);
@@ -64,22 +62,6 @@ export function NowPlayingExpanded({
       });
     }
   }, []);
-
-  // Auto-hide controls when mouse is still
-  useEffect(() => {
-    const handleMouseMove = () => {
-      setShowControls(true);
-      if (mouseTimeout) clearTimeout(mouseTimeout);
-      const timeout = setTimeout(() => setShowControls(false), 3000);
-      setMouseTimeout(timeout);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      if (mouseTimeout) clearTimeout(mouseTimeout);
-    };
-  }, [mouseTimeout]);
 
   useEffect(() => {
     if (currentTrack.id !== prevTrackId) {
@@ -115,13 +97,12 @@ export function NowPlayingExpanded({
       style={{
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
         background: bgGradient,
-        backdropFilter: 'blur(40px)',
-        transition: 'background 1.5s ease-in-out'
+        backdropFilter: 'blur(40px)'
       }}
     >
       <div className="h-full flex flex-col max-w-6xl mx-auto px-8 py-6">
         {/* Header */}
-        <div className={`flex flex-col items-center mb-4 flex-shrink-0 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+        <div className="flex flex-col items-center mb-4 flex-shrink-0">
           <button
             onClick={handleCollapse}
             className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center hover:bg-white/20 transition mb-3"
@@ -136,16 +117,15 @@ export function NowPlayingExpanded({
           )}
         </div>
 
-        {/* Main Content - Centered when controls hidden, left-aligned when visible */}
-        <div className={`flex-1 flex items-center min-h-0 transition-all duration-700 ${showControls ? 'gap-16 justify-start' : 'justify-center'}`}>
-          {/* Album Art - Centers when controls hide */}
-          <div className={`flex-shrink-0 transition-all duration-700 ${showControls ? 'w-[420px]' : 'w-[500px]'}`}>
+        {/* Main Content - Horizontal Layout */}
+        <div className="flex-1 flex items-center gap-16 min-h-0">
+          {/* Album Art - Left Side */}
+          <div className="flex-shrink-0 w-[420px]">
             <div
-              className={`relative aspect-square rounded-[32px] overflow-hidden transition-all duration-600 ${coverFlip ? 'animate-flip' : ''}`}
+              className={`relative aspect-square rounded-[32px] overflow-hidden shadow-2xl transition-transform duration-600 ${coverFlip ? 'animate-flip' : ''}`}
               style={{
                 transformStyle: 'preserve-3d',
-                perspective: '1000px',
-                boxShadow: '0 35px 90px rgba(0, 0, 0, 0.7), 0 20px 40px rgba(0, 0, 0, 0.6)'
+                perspective: '1000px'
               }}
             >
               <img
@@ -157,8 +137,8 @@ export function NowPlayingExpanded({
           </div>
 
           {/* Controls & Info - Right Side */}
-          <div className={`flex-1 flex flex-col justify-center min-w-0 transition-opacity duration-500 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-            {/* Track Info */}
+          <div className="flex-1 flex flex-col justify-center min-w-0">
+            {/* Track Info - Reduced by 40% */}
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-white mb-2 truncate">{currentTrack.name}</h2>
               <p className="text-sm text-white/80 truncate">{currentTrack.artists.map(a => a.name).join(', ')}</p>
@@ -195,32 +175,24 @@ export function NowPlayingExpanded({
                 onClick={onPrevious}
                 className="text-white hover:text-[#cfffb1] transition"
               >
-                <svg width="36" height="36" viewBox="0 0 36 36" fill="currentColor">
-                  <path d="M8 6h2v24H8V6zm4 12l14-9v18l-14-9z"/>
-                </svg>
+                <SkipBack className="w-9 h-9" fill="currentColor" />
               </button>
               <button
                 onClick={onTogglePlay}
                 className="w-20 h-20 bg-white hover:scale-105 rounded-full flex items-center justify-center shadow-2xl transition-all duration-200 relative overflow-hidden"
               >
                 <div className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${isPlaying ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                  <svg width="36" height="36" viewBox="0 0 36 36" fill="black">
-                    <path d="M12 8h4v20h-4V8zm8 0h4v20h-4V8z"/>
-                  </svg>
+                  <Pause className="w-9 h-9 text-black" fill="black" />
                 </div>
                 <div className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${!isPlaying ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                  <svg width="36" height="36" viewBox="0 0 36 36" fill="black">
-                    <path d="M12 8l18 10-18 10V8z"/>
-                  </svg>
+                  <Play className="w-9 h-9 text-black ml-1" fill="black" />
                 </div>
               </button>
               <button
                 onClick={onNext}
                 className="text-white hover:text-[#cfffb1] transition"
               >
-                <svg width="36" height="36" viewBox="0 0 36 36" fill="currentColor">
-                  <path d="M26 6h2v24h-2V6zM10 9l14 9-14 9V9z"/>
-                </svg>
+                <SkipForward className="w-9 h-9" fill="currentColor" />
               </button>
               <button
                 onClick={onToggleRepeat}

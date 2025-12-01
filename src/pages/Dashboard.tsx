@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { getStoredAccessToken } from '@/auth/spotifyAuth';
 import { MusicRecommendations } from '@/components/MusicRecommendations';
@@ -13,47 +12,17 @@ interface OutletContext {
 export default function Dashboard() {
   const accessToken = getStoredAccessToken();
   const { deviceId, setCurrentContext } = useOutletContext<OutletContext>();
-  const [timePeriod, setTimePeriod] = useState<'vandaag' | 'week' | 'maand'>('vandaag');
-
-  const getTitle = () => {
-    switch (timePeriod) {
-      case 'vandaag': return 'Vandaag';
-      case 'week': return 'Deze week';
-      case 'maand': return 'Deze maand';
-    }
-  };
 
   return (
     <div className="min-h-full bg-background pb-32">
       <div className="max-w-7xl mx-auto p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-4xl font-bold text-foreground">{getTitle()}</h1>
-          <div className="flex gap-2 bg-muted rounded-lg p-1">
-            <Button 
-              variant={timePeriod === 'vandaag' ? 'secondary' : 'ghost'} 
-              size="sm"
-              onClick={() => setTimePeriod('vandaag')}
-              className="rounded-md"
-            >
-              Vandaag
-            </Button>
-            <Button 
-              variant={timePeriod === 'week' ? 'secondary' : 'ghost'} 
-              size="sm"
-              onClick={() => setTimePeriod('week')}
-              className="rounded-md"
-            >
-              Week
-            </Button>
-            <Button 
-              variant={timePeriod === 'maand' ? 'secondary' : 'ghost'} 
-              size="sm"
-              onClick={() => setTimePeriod('maand')}
-              className="rounded-md"
-            >
-              Maand
-            </Button>
+          <h1 className="text-4xl font-bold text-foreground">Vandaag</h1>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm">Vandaag</Button>
+            <Button variant="ghost" size="sm">Week</Button>
+            <Button variant="ghost" size="sm">Maand</Button>
           </div>
         </div>
 

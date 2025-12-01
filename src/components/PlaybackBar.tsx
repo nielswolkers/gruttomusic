@@ -1,4 +1,4 @@
-// Apple Music styled playback controls
+import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 
 interface PlaybackBarProps {
   currentTrack: Spotify.Track;
@@ -59,32 +59,24 @@ export function PlaybackBar({
                 onClick={(e) => { e.stopPropagation(); onPrevious(); }}
                 className="text-[#6e6e73] hover:text-[#1d1d1f] transition"
               >
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M4 3h1v14H4V3zm2 7l8-5v10l-8-5z"/>
-                </svg>
+                <SkipBack className="w-5 h-5" fill="currentColor" />
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onTogglePlay(); }}
                 className="w-10 h-10 bg-[#1d1d1f] hover:scale-105 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 relative overflow-hidden"
               >
                 <div className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${isPlaying ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="white">
-                    <path d="M6 4h2v12H6V4zm6 0h2v12h-2V4z"/>
-                  </svg>
+                  <Pause className="w-5 h-5 text-white" fill="white" />
                 </div>
                 <div className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${!isPlaying ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="white">
-                    <path d="M6 4l10 6-10 6V4z"/>
-                  </svg>
+                  <Play className="w-5 h-5 text-white ml-0.5" fill="white" />
                 </div>
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onNext(); }}
                 className="text-[#6e6e73] hover:text-[#1d1d1f] transition"
               >
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M15 3h1v14h-1V3zM6 5l8 5-8 5V5z"/>
-                </svg>
+                <SkipForward className="w-5 h-5" fill="currentColor" />
               </button>
             </div>
 

@@ -105,10 +105,10 @@ export function MusicRecommendations({ deviceId, onContextChange }: MusicRecomme
             <p className="text-sm text-muted-foreground mt-1">Jouw favoriete nummers</p>
           </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {[...Array(6)].map((_, i) => (
             <div key={i} className="animate-pulse">
-              <div className="aspect-square bg-muted rounded-2xl mb-3 scale-[0.85]"></div>
+              <div className="aspect-square bg-muted rounded-2xl mb-3"></div>
               <div className="h-4 bg-muted rounded mb-2"></div>
               <div className="h-3 bg-muted rounded w-2/3"></div>
             </div>
@@ -137,14 +137,14 @@ export function MusicRecommendations({ deviceId, onContextChange }: MusicRecomme
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         {items.map((item) => (
           <div
             key={item.id}
             className="group cursor-pointer"
             onClick={() => handleItemClick(item)}
           >
-            <div className="relative aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-primary/20 to-primary/40 shadow-md hover:shadow-xl transition-all duration-300 mb-3 scale-[0.85]">
+            <div className="relative aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-primary/20 to-primary/40 shadow-md hover:shadow-xl transition-all duration-300 mb-3">
               {item.image && (
                 <img
                   src={item.image}
