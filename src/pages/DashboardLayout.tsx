@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from '@/components/Sidebar';
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
@@ -6,6 +6,7 @@ import { getStoredAccessToken } from '@/auth/spotifyAuth';
 import { PlaybackBar } from '@/components/PlaybackBar';
 import { NowPlayingExpanded } from '@/components/NowPlayingExpanded';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+import { ImperativePanelHandle } from 'react-resizable-panels';
 
 interface ContextInfo {
   name: string;
@@ -16,6 +17,9 @@ export default function DashboardLayout() {
   const accessToken = getStoredAccessToken();
   const [isExpanded, setIsExpanded] = useState(false);
   const [currentContext, setCurrentContext] = useState<ContextInfo | null>(null);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
+  const [sidebarSize, setSidebarSize] = useState(15);
 
   const {
     currentTrack,
@@ -38,11 +42,33 @@ export default function DashboardLayout() {
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       <ResizablePanelGroup direction="horizontal">
-        <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
-          <Sidebar />
+        <ResizablePanel 
+          ref={sidebarPanelRef}
+          defaultSize={15} 
+          minSize={5} 
+          maxSize={15}
+          onResize={(size) => setSidebarSize(size)}
+        >
+          <div
+            onMouseEnter={() => {
+              setSidebarHovered(true);
+              if (sidebarSize < 12 && sidebarPanelRef.current) {
+                sidebarPanelRef.current.resize(15);
+              }
+            }}
+            onMouseLeave={() => {
+              setSidebarHovered(false);
+              if (sidebarSize >= 15 && sidebarPanelRef.current) {
+                sidebarPanelRef.current.resize(sidebarSize);
+              }
+            }}
+            className="h-full"
+          >
+            <Sidebar collapsed={sidebarSize < 12} />
+          </div>
         </ResizablePanel>
         
-        <ResizableHandle withHandle />
+        <ResizableHandle />
         
         <ResizablePanel defaultSize={80}>
           <div className="relative h-full flex flex-col">

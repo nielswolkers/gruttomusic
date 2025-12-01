@@ -49,7 +49,9 @@ export function NowPlayingExpanded({
   const [slideIn, setSlideIn] = useState(false);
   const [coverFlip, setCoverFlip] = useState(false);
   const [prevTrackId, setPrevTrackId] = useState(currentTrack.id);
-  const [bgGradient, setBgGradient] = useState('linear-gradient(135deg, rgba(62, 139, 104, 0.4) 0%, rgba(42, 95, 74, 0.6) 100%)');
+  const [bgGradient, setBgGradient] = useState('linear-gradient(135deg, rgba(25, 55, 42, 0.95) 0%, rgba(17, 38, 30, 1) 100%)');
+  const [showControls, setShowControls] = useState(true);
+  const [mouseTimeout, setMouseTimeout] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setSlideIn(true);
@@ -62,6 +64,22 @@ export function NowPlayingExpanded({
       });
     }
   }, []);
+
+  // Auto-hide controls when mouse is still
+  useEffect(() => {
+    const handleMouseMove = () => {
+      setShowControls(true);
+      if (mouseTimeout) clearTimeout(mouseTimeout);
+      const timeout = setTimeout(() => setShowControls(false), 3000);
+      setMouseTimeout(timeout);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (mouseTimeout) clearTimeout(mouseTimeout);
+    };
+  }, [mouseTimeout]);
 
   useEffect(() => {
     if (currentTrack.id !== prevTrackId) {
@@ -97,12 +115,13 @@ export function NowPlayingExpanded({
       style={{
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
         background: bgGradient,
-        backdropFilter: 'blur(40px)'
+        backdropFilter: 'blur(40px)',
+        transition: 'background 1.5s ease-in-out'
       }}
     >
       <div className="h-full flex flex-col max-w-6xl mx-auto px-8 py-6">
         {/* Header */}
-        <div className="flex flex-col items-center mb-4 flex-shrink-0">
+        <div className={`flex flex-col items-center mb-4 flex-shrink-0 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
           <button
             onClick={handleCollapse}
             className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center hover:bg-white/20 transition mb-3"
@@ -122,10 +141,11 @@ export function NowPlayingExpanded({
           {/* Album Art - Left Side */}
           <div className="flex-shrink-0 w-[420px]">
             <div
-              className={`relative aspect-square rounded-[32px] overflow-hidden shadow-2xl transition-transform duration-600 ${coverFlip ? 'animate-flip' : ''}`}
+              className={`relative aspect-square rounded-[32px] overflow-hidden transition-transform duration-600 ${coverFlip ? 'animate-flip' : ''}`}
               style={{
                 transformStyle: 'preserve-3d',
-                perspective: '1000px'
+                perspective: '1000px',
+                boxShadow: '0 30px 80px rgba(0, 0, 0, 0.6), 0 15px 35px rgba(0, 0, 0, 0.5)'
               }}
             >
               <img
@@ -145,7 +165,7 @@ export function NowPlayingExpanded({
             </div>
 
             {/* Progress */}
-            <div className="mb-8">
+            <div className={`mb-8 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
               <input
                 type="range"
                 min="0"
@@ -164,7 +184,7 @@ export function NowPlayingExpanded({
             </div>
 
             {/* Controls */}
-            <div className="flex items-center justify-between mb-8 max-w-xl">
+            <div className={`flex items-center justify-between mb-8 max-w-xl transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
               <button
                 onClick={onToggleShuffle}
                 className={`transition ${shuffleEnabled ? 'text-[#cfffb1]' : 'text-white/60 hover:text-white'}`}
@@ -204,7 +224,7 @@ export function NowPlayingExpanded({
             </div>
 
             {/* Volume */}
-            <div className="flex items-center space-x-4 max-w-md">
+            <div className={`flex items-center space-x-4 max-w-md transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
               <Volume2 className="w-5 h-5 text-white/70" />
               <input
                 type="range"
