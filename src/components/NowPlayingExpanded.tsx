@@ -136,16 +136,16 @@ export function NowPlayingExpanded({
           )}
         </div>
 
-        {/* Main Content - Horizontal Layout */}
-        <div className="flex-1 flex items-center gap-16 min-h-0">
-          {/* Album Art - Left Side */}
-          <div className="flex-shrink-0 w-[420px]">
+        {/* Main Content - Centered when controls hidden, left-aligned when visible */}
+        <div className={`flex-1 flex items-center min-h-0 transition-all duration-700 ${showControls ? 'gap-16 justify-start' : 'justify-center'}`}>
+          {/* Album Art - Centers when controls hide */}
+          <div className={`flex-shrink-0 transition-all duration-700 ${showControls ? 'w-[420px]' : 'w-[500px]'}`}>
             <div
-              className={`relative aspect-square rounded-[32px] overflow-hidden transition-transform duration-600 ${coverFlip ? 'animate-flip' : ''}`}
+              className={`relative aspect-square rounded-[32px] overflow-hidden transition-all duration-600 ${coverFlip ? 'animate-flip' : ''}`}
               style={{
                 transformStyle: 'preserve-3d',
                 perspective: '1000px',
-                boxShadow: '0 30px 80px rgba(0, 0, 0, 0.6), 0 15px 35px rgba(0, 0, 0, 0.5)'
+                boxShadow: '0 35px 90px rgba(0, 0, 0, 0.7), 0 20px 40px rgba(0, 0, 0, 0.6)'
               }}
             >
               <img
@@ -157,15 +157,15 @@ export function NowPlayingExpanded({
           </div>
 
           {/* Controls & Info - Right Side */}
-          <div className="flex-1 flex flex-col justify-center min-w-0">
-            {/* Track Info - Reduced by 40% */}
+          <div className={`flex-1 flex flex-col justify-center min-w-0 transition-opacity duration-500 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+            {/* Track Info */}
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-white mb-2 truncate">{currentTrack.name}</h2>
               <p className="text-sm text-white/80 truncate">{currentTrack.artists.map(a => a.name).join(', ')}</p>
             </div>
 
             {/* Progress */}
-            <div className={`mb-8 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+            <div className="mb-8">
               <input
                 type="range"
                 min="0"
@@ -184,7 +184,7 @@ export function NowPlayingExpanded({
             </div>
 
             {/* Controls */}
-            <div className={`flex items-center justify-between mb-8 max-w-xl transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+            <div className="flex items-center justify-between mb-8 max-w-xl">
               <button
                 onClick={onToggleShuffle}
                 className={`transition ${shuffleEnabled ? 'text-[#cfffb1]' : 'text-white/60 hover:text-white'}`}
@@ -195,24 +195,32 @@ export function NowPlayingExpanded({
                 onClick={onPrevious}
                 className="text-white hover:text-[#cfffb1] transition"
               >
-                <SkipBack className="w-9 h-9" fill="currentColor" />
+                <svg width="36" height="36" viewBox="0 0 36 36" fill="currentColor">
+                  <path d="M8 6h2v24H8V6zm4 12l14-9v18l-14-9z"/>
+                </svg>
               </button>
               <button
                 onClick={onTogglePlay}
                 className="w-20 h-20 bg-white hover:scale-105 rounded-full flex items-center justify-center shadow-2xl transition-all duration-200 relative overflow-hidden"
               >
                 <div className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${isPlaying ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                  <Pause className="w-9 h-9 text-black" fill="black" />
+                  <svg width="36" height="36" viewBox="0 0 36 36" fill="black">
+                    <path d="M12 8h4v20h-4V8zm8 0h4v20h-4V8z"/>
+                  </svg>
                 </div>
                 <div className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${!isPlaying ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                  <Play className="w-9 h-9 text-black ml-1" fill="black" />
+                  <svg width="36" height="36" viewBox="0 0 36 36" fill="black">
+                    <path d="M12 8l18 10-18 10V8z"/>
+                  </svg>
                 </div>
               </button>
               <button
                 onClick={onNext}
                 className="text-white hover:text-[#cfffb1] transition"
               >
-                <SkipForward className="w-9 h-9" fill="currentColor" />
+                <svg width="36" height="36" viewBox="0 0 36 36" fill="currentColor">
+                  <path d="M26 6h2v24h-2V6zM10 9l14 9-14 9V9z"/>
+                </svg>
               </button>
               <button
                 onClick={onToggleRepeat}
@@ -224,7 +232,7 @@ export function NowPlayingExpanded({
             </div>
 
             {/* Volume */}
-            <div className={`flex items-center space-x-4 max-w-md transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+            <div className="flex items-center space-x-4 max-w-md">
               <Volume2 className="w-5 h-5 text-white/70" />
               <input
                 type="range"
