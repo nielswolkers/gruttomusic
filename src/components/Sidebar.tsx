@@ -4,14 +4,14 @@ import gruttoLogo from '@/assets/grutto-logo.png';
 
 export function Sidebar() {
   return (
-    <aside className="hidden md:flex h-screen bg-sidebar border-r border-sidebar-border flex-col overflow-hidden">
+    <aside className="hidden md:flex w-64 bg-sidebar border-r border-sidebar-border flex-col">
       {/* Logo */}
-      <div className="p-6 flex-shrink-0">
+      <div className="p-6">
         <img src={gruttoLogo} alt="Grutto" className="h-8 w-auto" />
       </div>
 
       {/* Menu */}
-      <nav className="flex-1 px-3 overflow-y-auto">
+      <nav className="flex-1 px-3">
         <p className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Menu
         </p>
@@ -73,7 +73,7 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom Section */}
-      <div className="p-3 border-t border-sidebar-border space-y-1 flex-shrink-0">
+      <div className="p-3 border-t border-sidebar-border space-y-1">
         <NavLink 
           to="/meldingen" 
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors relative"
