@@ -5,7 +5,7 @@ import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
 import { getStoredAccessToken } from '@/auth/spotifyAuth';
 import { PlaybackBar } from '@/components/PlaybackBar';
 import { NowPlayingExpanded } from '@/components/NowPlayingExpanded';
-import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 
 interface ContextInfo {
   name: string;
@@ -36,17 +36,21 @@ export default function DashboardLayout() {
   } = useSpotifyPlayer(accessToken);
 
   return (
-    <SidebarProvider defaultOpen={true}>
-      <div className="flex h-screen w-full bg-background overflow-hidden">
-        <Sidebar />
+    <div className="flex h-screen bg-background overflow-hidden">
+      <ResizablePanelGroup direction="horizontal">
+        <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
+          <Sidebar />
+        </ResizablePanel>
         
-        <SidebarInset className="flex-1">
+        <ResizableHandle withHandle />
+        
+        <ResizablePanel defaultSize={80}>
           <div className="relative h-full flex flex-col">
             <main className="flex-1 overflow-y-auto">
               <Outlet context={{ deviceId, setCurrentContext }} />
             </main>
             
-            {/* Playback Bar - stays in right area only */}
+            {/* Playback Bar - stays in right area */}
             {currentTrack && !isExpanded && (
               <PlaybackBar
                 currentTrack={currentTrack}
@@ -60,31 +64,31 @@ export default function DashboardLayout() {
                 onExpand={() => setIsExpanded(true)}
               />
             )}
-          </div>
-        </SidebarInset>
 
-        {/* Expanded Now Playing - full screen overlay */}
-        {currentTrack && isExpanded && (
-          <NowPlayingExpanded
-            currentTrack={currentTrack}
-            isPlaying={isPlaying}
-            position={position}
-            duration={duration}
-            volume={volume}
-            shuffleEnabled={shuffleEnabled}
-            repeatMode={repeatMode}
-            contextInfo={currentContext}
-            onTogglePlay={togglePlay}
-            onNext={nextTrack}
-            onPrevious={previousTrack}
-            onSeek={seek}
-            onVolumeChange={setPlayerVolume}
-            onToggleShuffle={toggleShuffle}
-            onToggleRepeat={toggleRepeat}
-            onCollapse={() => setIsExpanded(false)}
-          />
-        )}
-      </div>
-    </SidebarProvider>
+            {/* Expanded Now Playing - full screen */}
+            {currentTrack && isExpanded && (
+              <NowPlayingExpanded
+                currentTrack={currentTrack}
+                isPlaying={isPlaying}
+                position={position}
+                duration={duration}
+                volume={volume}
+                shuffleEnabled={shuffleEnabled}
+                repeatMode={repeatMode}
+                contextInfo={currentContext}
+                onTogglePlay={togglePlay}
+                onNext={nextTrack}
+                onPrevious={previousTrack}
+                onSeek={seek}
+                onVolumeChange={setPlayerVolume}
+                onToggleShuffle={toggleShuffle}
+                onToggleRepeat={toggleRepeat}
+                onCollapse={() => setIsExpanded(false)}
+              />
+            )}
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    </div>
   );
 }
