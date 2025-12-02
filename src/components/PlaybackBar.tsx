@@ -59,24 +59,24 @@ export function PlaybackBar({
                 onClick={(e) => { e.stopPropagation(); onPrevious(); }}
                 className="text-[#6e6e73] hover:text-[#1d1d1f] transition"
               >
-                <SkipBack className="w-5 h-5" fill="currentColor" />
+                <SkipBack className="w-5 h-5" fill="currentColor" strokeWidth={0} />
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onTogglePlay(); }}
                 className="w-10 h-10 bg-[#1d1d1f] hover:scale-105 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 relative overflow-hidden"
               >
                 <div className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${isPlaying ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                  <Pause className="w-5 h-5 text-white" fill="white" />
+                  <Pause className="w-5 h-5 text-white" fill="white" strokeWidth={0} />
                 </div>
                 <div className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${!isPlaying ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                  <Play className="w-5 h-5 text-white ml-0.5" fill="white" />
+                  <Play className="w-5 h-5 text-white ml-0.5" fill="white" strokeWidth={0} />
                 </div>
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onNext(); }}
                 className="text-[#6e6e73] hover:text-[#1d1d1f] transition"
               >
-                <SkipForward className="w-5 h-5" fill="currentColor" />
+                <SkipForward className="w-5 h-5" fill="currentColor" strokeWidth={0} />
               </button>
             </div>
 
