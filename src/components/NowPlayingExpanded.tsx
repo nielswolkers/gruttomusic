@@ -1,5 +1,5 @@
-import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Volume2, ChevronDown } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Shuffle, Repeat, Volume2, ChevronDown } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
 import { extractColors } from '@/utils/colorExtractor';
 
 interface ContextInfo {
@@ -50,6 +50,8 @@ export function NowPlayingExpanded({
   const [coverFlip, setCoverFlip] = useState(false);
   const [prevTrackId, setPrevTrackId] = useState(currentTrack.id);
   const [bgGradient, setBgGradient] = useState('linear-gradient(135deg, rgba(62, 139, 104, 0.4) 0%, rgba(42, 95, 74, 0.6) 100%)');
+  const [isIdle, setIsIdle] = useState(false);
+  const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setSlideIn(true);
@@ -79,6 +81,29 @@ export function NowPlayingExpanded({
     }
   }, [currentTrack.id, prevTrackId]);
 
+  // Mouse idle detection
+  useEffect(() => {
+    const handleMouseMove = () => {
+      setIsIdle(false);
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+      }
+      idleTimerRef.current = setTimeout(() => {
+        setIsIdle(true);
+      }, 3000);
+    };
+
+    handleMouseMove();
+    window.addEventListener('mousemove', handleMouseMove);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+      }
+    };
+  }, []);
+
   function formatTime(ms: number) {
     const seconds = Math.floor(ms / 1000);
     const mins = Math.floor(seconds / 60);
@@ -97,35 +122,37 @@ export function NowPlayingExpanded({
       style={{
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
         background: bgGradient,
-        backdropFilter: 'blur(40px)'
+        backdropFilter: 'blur(40px)',
+        transition: 'background 1s ease-in-out'
       }}
     >
       <div className="h-full flex flex-col max-w-6xl mx-auto px-8 py-6">
         {/* Header */}
-        <div className="flex flex-col items-center mb-4 flex-shrink-0">
+        <div className={`flex flex-col items-center mb-4 flex-shrink-0 transition-opacity duration-300 ${isIdle ? 'opacity-100' : 'opacity-100'}`}>
           <button
             onClick={handleCollapse}
-            className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center hover:bg-white/20 transition mb-3"
+            className={`w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center hover:bg-white/20 transition mb-3 ${isIdle ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
           >
             <ChevronDown className="w-6 h-6 text-white" />
           </button>
           <span className="text-xs font-semibold text-white/80 tracking-wider uppercase mb-1">Nu aan het spelen</span>
           {contextInfo && (
-            <span className="text-sm text-white/60">
+            <span className={`text-sm text-white/60 transition-opacity duration-300 ${isIdle ? 'opacity-0' : 'opacity-100'}`}>
               {contextInfo.type === 'artist' ? 'Artiest' : 'Playlist'}: {contextInfo.name}
             </span>
           )}
         </div>
 
         {/* Main Content - Horizontal Layout */}
-        <div className="flex-1 flex items-center gap-16 min-h-0">
+        <div className={`flex-1 flex items-center gap-16 min-h-0 transition-all duration-700 ${isIdle ? 'justify-center' : ''}`}>
           {/* Album Art - Left Side */}
-          <div className="flex-shrink-0 w-[420px]">
+          <div className={`flex-shrink-0 transition-all duration-700 ${isIdle ? 'w-[500px]' : 'w-[420px]'}`}>
             <div
-              className={`relative aspect-square rounded-[32px] overflow-hidden shadow-2xl transition-transform duration-600 ${coverFlip ? 'animate-flip' : ''}`}
+              className={`relative aspect-square rounded-[32px] overflow-hidden transition-all duration-600 ${coverFlip ? 'animate-flip' : ''}`}
               style={{
                 transformStyle: 'preserve-3d',
-                perspective: '1000px'
+                perspective: '1000px',
+                boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.6), 0 15px 30px -10px rgba(0, 0, 0, 0.4)'
               }}
             >
               <img
@@ -137,7 +164,7 @@ export function NowPlayingExpanded({
           </div>
 
           {/* Controls & Info - Right Side */}
-          <div className="flex-1 flex flex-col justify-center min-w-0">
+          <div className={`flex-1 flex flex-col justify-center min-w-0 transition-opacity duration-300 ${isIdle ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
             {/* Track Info - Reduced by 40% */}
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-white mb-2 truncate">{currentTrack.name}</h2>
@@ -175,24 +202,32 @@ export function NowPlayingExpanded({
                 onClick={onPrevious}
                 className="text-white hover:text-[#cfffb1] transition"
               >
-                <SkipBack className="w-9 h-9" fill="currentColor" />
+                <svg width="36" height="36" viewBox="0 0 36 36" fill="currentColor">
+                  <path d="M8 6h3v24H8V6zm5 12l14-10v20L13 18z"/>
+                </svg>
               </button>
               <button
                 onClick={onTogglePlay}
                 className="w-20 h-20 bg-white hover:scale-105 rounded-full flex items-center justify-center shadow-2xl transition-all duration-200 relative overflow-hidden"
               >
                 <div className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${isPlaying ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                  <Pause className="w-9 h-9 text-black" fill="black" />
+                  <svg width="36" height="36" viewBox="0 0 36 36" fill="#000">
+                    <path d="M11 8h5v20h-5V8zm9 0h5v20h-5V8z"/>
+                  </svg>
                 </div>
                 <div className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${!isPlaying ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                  <Play className="w-9 h-9 text-black ml-1" fill="black" />
+                  <svg width="36" height="36" viewBox="0 0 36 36" fill="#000">
+                    <path d="M12 8l18 10-18 10V8z"/>
+                  </svg>
                 </div>
               </button>
               <button
                 onClick={onNext}
                 className="text-white hover:text-[#cfffb1] transition"
               >
-                <SkipForward className="w-9 h-9" fill="currentColor" />
+                <svg width="36" height="36" viewBox="0 0 36 36" fill="currentColor">
+                  <path d="M25 6h3v24h-3V6zM9 8l14 10-14 10V8z"/>
+                </svg>
               </button>
               <button
                 onClick={onToggleRepeat}
