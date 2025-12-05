@@ -50,6 +50,8 @@ export function NowPlayingExpanded({
   const [coverFlip, setCoverFlip] = useState(false);
   const [prevTrackId, setPrevTrackId] = useState(currentTrack.id);
   const [bgGradient, setBgGradient] = useState('linear-gradient(135deg, rgba(62, 139, 104, 0.4) 0%, rgba(42, 95, 74, 0.6) 100%)');
+  const [nextGradient, setNextGradient] = useState<string | null>(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   useEffect(() => {
     setSlideIn(true);
@@ -69,11 +71,18 @@ export function NowPlayingExpanded({
       setTimeout(() => setCoverFlip(false), 600);
       setPrevTrackId(currentTrack.id);
 
-      // Extract colors from album art
+      // Extract colors from album art with smooth transition
       const imageUrl = currentTrack.album.images[0]?.url;
       if (imageUrl) {
         extractColors(imageUrl).then(gradient => {
-          setBgGradient(gradient);
+          setNextGradient(gradient);
+          setIsTransitioning(true);
+          // After 2s transition completes, update main gradient
+          setTimeout(() => {
+            setBgGradient(gradient);
+            setNextGradient(null);
+            setIsTransitioning(false);
+          }, 2000);
         });
       }
     }
@@ -96,11 +105,21 @@ export function NowPlayingExpanded({
       className={`fixed inset-0 z-50 transition-transform duration-500 ease-out ${slideIn ? 'translate-y-0' : 'translate-y-full'}`}
       style={{
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
-        background: bgGradient,
-        backdropFilter: 'blur(40px)'
       }}
     >
-      <div className="h-full flex flex-col max-w-6xl mx-auto px-8 py-6">
+      {/* Background gradient layers for smooth transition */}
+      <div
+        className="absolute inset-0 transition-opacity duration-[2000ms] ease-in-out"
+        style={{ background: bgGradient, opacity: isTransitioning ? 0 : 1 }}
+      />
+      {nextGradient && (
+        <div
+          className="absolute inset-0 transition-opacity duration-[2000ms] ease-in-out"
+          style={{ background: nextGradient, opacity: isTransitioning ? 1 : 0 }}
+        />
+      )}
+      <div className="absolute inset-0" style={{ backdropFilter: 'blur(40px)' }} />
+      <div className="relative h-full flex flex-col max-w-6xl mx-auto px-8 py-6">
         {/* Header */}
         <div className="flex flex-col items-center mb-4 flex-shrink-0">
           <button
