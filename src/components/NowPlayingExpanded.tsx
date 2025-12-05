@@ -1,5 +1,5 @@
 import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Volume2, ChevronDown } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { extractColors } from '@/utils/colorExtractor';
 
 interface ContextInfo {
@@ -49,9 +49,84 @@ export function NowPlayingExpanded({
   const [slideIn, setSlideIn] = useState(false);
   const [coverFlip, setCoverFlip] = useState(false);
   const [prevTrackId, setPrevTrackId] = useState(currentTrack.id);
-  const [bgGradient, setBgGradient] = useState('linear-gradient(135deg, rgba(62, 139, 104, 0.4) 0%, rgba(42, 95, 74, 0.6) 100%)');
-  const [nextGradient, setNextGradient] = useState<string | null>(null);
-  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [currentGradient, setCurrentGradient] = useState('linear-gradient(135deg, rgba(62, 139, 104, 0.4) 0%, rgba(42, 95, 74, 0.6) 100%)');
+  const [targetGradient, setTargetGradient] = useState('linear-gradient(135deg, rgba(62, 139, 104, 0.4) 0%, rgba(42, 95, 74, 0.6) 100%)');
+  const animationRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+
+  // Parse gradient colors from gradient string
+  const parseGradientColors = (gradient: string) => {
+    const rgbaMatches = gradient.match(/rgba?\([\d\s,\.]+\)/g) || [];
+    return rgbaMatches.map(rgba => {
+      const values = rgba.match(/[\d\.]+/g) || [];
+      return {
+        r: parseFloat(values[0]) || 0,
+        g: parseFloat(values[1]) || 0,
+        b: parseFloat(values[2]) || 0,
+        a: parseFloat(values[3]) || 1
+      };
+    });
+  };
+
+  // Interpolate between two colors
+  const lerpColor = (c1: {r:number,g:number,b:number,a:number}, c2: {r:number,g:number,b:number,a:number}, t: number) => {
+    return {
+      r: c1.r + (c2.r - c1.r) * t,
+      g: c1.g + (c2.g - c1.g) * t,
+      b: c1.b + (c2.b - c1.b) * t,
+      a: c1.a + (c2.a - c1.a) * t
+    };
+  };
+
+  // Build gradient string from colors
+  const buildGradient = (colors: {r:number,g:number,b:number,a:number}[]) => {
+    if (colors.length < 2) return currentGradient;
+    return `linear-gradient(135deg, rgba(${Math.round(colors[0].r)}, ${Math.round(colors[0].g)}, ${Math.round(colors[0].b)}, ${colors[0].a.toFixed(2)}) 0%, rgba(${Math.round(colors[1].r)}, ${Math.round(colors[1].g)}, ${Math.round(colors[1].b)}, ${colors[1].a.toFixed(2)}) 100%)`;
+  };
+
+  // Animate gradient transition
+  const animateGradient = (fromGradient: string, toGradient: string) => {
+    const fromColors = parseGradientColors(fromGradient);
+    const toColors = parseGradientColors(toGradient);
+    
+    if (fromColors.length < 2 || toColors.length < 2) {
+      setCurrentGradient(toGradient);
+      return;
+    }
+
+    const duration = 2000; // 2 seconds
+    startTimeRef.current = performance.now();
+
+    const animate = (currentTime: number) => {
+      if (!startTimeRef.current) return;
+      
+      const elapsed = currentTime - startTimeRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Ease-in-out function for super smooth transition
+      const eased = progress < 0.5 
+        ? 4 * progress * progress * progress 
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+      const interpolatedColors = [
+        lerpColor(fromColors[0], toColors[0], eased),
+        lerpColor(fromColors[1], toColors[1], eased)
+      ];
+
+      setCurrentGradient(buildGradient(interpolatedColors));
+
+      if (progress < 1) {
+        animationRef.current = requestAnimationFrame(animate);
+      } else {
+        setCurrentGradient(toGradient);
+      }
+    };
+
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+    animationRef.current = requestAnimationFrame(animate);
+  };
 
   useEffect(() => {
     setSlideIn(true);
@@ -60,9 +135,16 @@ export function NowPlayingExpanded({
     const imageUrl = currentTrack.album.images[0]?.url;
     if (imageUrl) {
       extractColors(imageUrl).then(gradient => {
-        setBgGradient(gradient);
+        setCurrentGradient(gradient);
+        setTargetGradient(gradient);
       });
     }
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -71,18 +153,13 @@ export function NowPlayingExpanded({
       setTimeout(() => setCoverFlip(false), 600);
       setPrevTrackId(currentTrack.id);
 
-      // Extract colors from album art with smooth transition
+      // Extract colors from album art with smooth animated transition
       const imageUrl = currentTrack.album.images[0]?.url;
       if (imageUrl) {
         extractColors(imageUrl).then(gradient => {
-          setNextGradient(gradient);
-          setIsTransitioning(true);
-          // After 2s transition completes, update main gradient
-          setTimeout(() => {
-            setBgGradient(gradient);
-            setNextGradient(null);
-            setIsTransitioning(false);
-          }, 2000);
+          const prevGradient = currentGradient;
+          setTargetGradient(gradient);
+          animateGradient(prevGradient, gradient);
         });
       }
     }
@@ -105,19 +182,9 @@ export function NowPlayingExpanded({
       className={`fixed inset-0 z-50 transition-transform duration-500 ease-out ${slideIn ? 'translate-y-0' : 'translate-y-full'}`}
       style={{
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
+        background: currentGradient,
       }}
     >
-      {/* Background gradient layers for smooth transition */}
-      <div
-        className="absolute inset-0 transition-opacity duration-[2000ms] ease-in-out"
-        style={{ background: bgGradient, opacity: isTransitioning ? 0 : 1 }}
-      />
-      {nextGradient && (
-        <div
-          className="absolute inset-0 transition-opacity duration-[2000ms] ease-in-out"
-          style={{ background: nextGradient, opacity: isTransitioning ? 1 : 0 }}
-        />
-      )}
       <div className="absolute inset-0" style={{ backdropFilter: 'blur(40px)' }} />
       <div className="relative h-full flex flex-col max-w-6xl mx-auto px-8 py-6">
         {/* Header */}
