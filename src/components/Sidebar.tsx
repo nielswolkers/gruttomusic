@@ -1,21 +1,35 @@
 import { Home, Calendar, Clock, BarChart3, CheckSquare, FileText, Bell, User } from 'lucide-react';
 import { NavLink } from './NavLink';
 import gruttoLogo from '@/assets/grutto-logo.png';
+import gruttoIcon from '@/assets/grutto-icon.png';
 import { useState, useRef, useEffect } from 'react';
+import { useSidebarState } from '@/contexts/SidebarContext';
 
 const EXPANDED_WIDTH = 256;
 const COLLAPSED_WIDTH = 72;
 
 export function Sidebar() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const { isCollapsed, setIsCollapsed } = useSidebarState();
   const [isDragging, setIsDragging] = useState(false);
-  const [currentWidth, setCurrentWidth] = useState(EXPANDED_WIDTH);
+  const [currentWidth, setCurrentWidth] = useState(isCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH);
   const sidebarRef = useRef<HTMLElement>(null);
-  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(EXPANDED_WIDTH);
 
+  // Sync currentWidth with isCollapsed state
+  useEffect(() => {
+    if (!isDragging) {
+      setCurrentWidth(isCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH);
+    }
+  }, [isCollapsed, isDragging]);
+
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Check if click is on a nav link - if so, don't start dragging
+    const target = e.target as HTMLElement;
+    if (target.closest('a')) {
+      return;
+    }
+    
     setIsDragging(true);
     dragStartXRef.current = e.clientX;
     dragStartWidthRef.current = currentWidth;
@@ -53,37 +67,24 @@ export function Sidebar() {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, currentWidth]);
+  }, [isDragging, currentWidth, setIsCollapsed]);
 
-  const handleClick = () => {
-    if (isCollapsed) {
-      setIsCollapsed(false);
-      setCurrentWidth(EXPANDED_WIDTH);
+  const handleClick = (e: React.MouseEvent) => {
+    // Only toggle if not clicking on a nav link and not dragging
+    const target = e.target as HTMLElement;
+    if (target.closest('a') || isDragging) {
+      return;
     }
+    
+    // Toggle collapsed state
+    setIsCollapsed(!isCollapsed);
+    setCurrentWidth(isCollapsed ? EXPANDED_WIDTH : COLLAPSED_WIDTH);
   };
 
-  const handleMouseEnter = () => {
-    if (isCollapsed) {
-      hoverTimeoutRef.current = setTimeout(() => {
-        setIsCollapsed(false);
-        setCurrentWidth(EXPANDED_WIDTH);
-      }, 2000);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
-    }
-    if (!isCollapsed && !isDragging) {
-      // Only collapse if it was expanded via hover
-      // Don't auto-collapse if user manually expanded
-    }
-  };
-
-  // Calculate opacity for text elements
+  // Calculate opacity for text elements (1 when expanded, 0 when collapsed)
   const textOpacity = Math.max(0, (currentWidth - COLLAPSED_WIDTH) / (EXPANDED_WIDTH - COLLAPSED_WIDTH));
+  // Inverse opacity for collapsed icon
+  const iconOpacity = 1 - textOpacity;
 
   return (
     <aside 
@@ -95,17 +96,26 @@ export function Sidebar() {
       }}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       {/* Logo */}
-      <div className="p-6 pl-[22px]">
+      <div className="p-6 pl-[22px] relative h-[68px]">
+        {/* Full logo - fades out when collapsed */}
         <img 
           src={gruttoLogo} 
           alt="Grutto" 
-          className="h-8 w-auto"
+          className="h-8 w-auto absolute"
           style={{ 
             opacity: textOpacity,
+            transition: isDragging ? 'none' : 'opacity 0.3s ease-out'
+          }}
+        />
+        {/* Icon logo - fades in when collapsed */}
+        <img 
+          src={gruttoIcon} 
+          alt="Grutto" 
+          className="h-8 w-auto absolute"
+          style={{ 
+            opacity: iconOpacity,
             transition: isDragging ? 'none' : 'opacity 0.3s ease-out'
           }}
         />
@@ -115,10 +125,6 @@ export function Sidebar() {
       <nav className="flex-1 px-3">
         <p 
           className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap"
-          style={{ 
-            opacity: textOpacity,
-            transition: isDragging ? 'none' : 'opacity 0.3s ease-out'
-          }}
         >
           Menu
         </p>
