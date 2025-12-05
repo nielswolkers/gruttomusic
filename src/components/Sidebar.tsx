@@ -4,7 +4,7 @@ import gruttoLogo from '@/assets/grutto-logo.png';
 
 export function Sidebar() {
   return (
-    <aside className="hidden md:flex w-64 bg-sidebar border-r border-sidebar-border flex-col">
+    <aside className="hidden md:flex w-64 bg-sidebar border-r border-sidebar-border flex-col h-screen sticky top-0 overflow-hidden">
       {/* Logo */}
       <div className="p-6">
         <img src={gruttoLogo} alt="Grutto" className="h-8 w-auto" />

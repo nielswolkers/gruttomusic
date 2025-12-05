@@ -12,10 +12,19 @@ interface ContextInfo {
   type: 'artist' | 'playlist';
 }
 
+type TimeFilter = 'vandaag' | 'week' | 'maand';
+
+const filterTitles: Record<TimeFilter, string> = {
+  vandaag: 'Vandaag',
+  week: 'Deze week',
+  maand: 'Deze maand',
+};
+
 export default function Dashboard() {
   const accessToken = getStoredAccessToken();
   const [isExpanded, setIsExpanded] = useState(false);
   const [currentContext, setCurrentContext] = useState<ContextInfo | null>(null);
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('vandaag');
 
   const {
     currentTrack,
@@ -40,11 +49,23 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-4xl font-bold text-foreground">Vandaag</h1>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm">Vandaag</Button>
-            <Button variant="ghost" size="sm">Week</Button>
-            <Button variant="ghost" size="sm">Maand</Button>
+          <h1 className="text-4xl font-bold text-foreground">{filterTitles[timeFilter]}</h1>
+          
+          {/* macOS-style segmented control */}
+          <div className="flex bg-muted rounded-lg p-1 gap-0.5">
+            {(['vandaag', 'week', 'maand'] as TimeFilter[]).map((filter) => (
+              <button
+                key={filter}
+                onClick={() => setTimeFilter(filter)}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                  timeFilter === filter
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {filter === 'vandaag' ? 'Vandaag' : filter === 'week' ? 'Week' : 'Maand'}
+              </button>
+            ))}
           </div>
         </div>
 

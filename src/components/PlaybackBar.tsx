@@ -34,7 +34,7 @@ export function PlaybackBar({
 
   return (
     <div
-      className="fixed bottom-0 left-0 right-0 bg-[#f5f5f7] text-[#1d1d1f] shadow-2xl z-40 border-t border-[#e5e5e7]"
+      className="fixed bottom-0 left-[256px] right-0 bg-[#f5f5f7] text-[#1d1d1f] shadow-2xl z-40 border-t border-[#e5e5e7]"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif' }}
     >
       <div className="px-4 py-2">
