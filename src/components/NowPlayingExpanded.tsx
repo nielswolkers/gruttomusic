@@ -329,12 +329,29 @@ export function NowPlayingExpanded({
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
         @keyframes flip {
-          0% { transform: rotateY(0deg); }
-          50% { transform: rotateY(90deg); }
-          100% { transform: rotateY(0deg); }
+          0% { 
+            transform: perspective(1000px) rotateY(0deg) scale(1);
+            opacity: 1;
+          }
+          25% { 
+            transform: perspective(1000px) rotateY(45deg) scale(0.95);
+            opacity: 0.8;
+          }
+          50% { 
+            transform: perspective(1000px) rotateY(90deg) scale(0.9);
+            opacity: 0.6;
+          }
+          75% { 
+            transform: perspective(1000px) rotateY(45deg) scale(0.95);
+            opacity: 0.8;
+          }
+          100% { 
+            transform: perspective(1000px) rotateY(0deg) scale(1);
+            opacity: 1;
+          }
         }
         .animate-flip {
-          animation: flip 0.6s ease-in-out;
+          animation: flip 0.8s cubic-bezier(0.4, 0, 0.2, 1);
         }
       `}</style>
     </div>
