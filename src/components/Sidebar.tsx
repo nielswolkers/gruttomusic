@@ -47,14 +47,21 @@ export function Sidebar() {
     const handleMouseUp = () => {
       if (!isDragging) return;
       setIsDragging(false);
-      // Snap to collapsed or expanded
-      const midpoint = (EXPANDED_WIDTH + COLLAPSED_WIDTH) / 2;
-      if (currentWidth < midpoint) {
+      // Snap to collapsed or expanded based on drag direction and threshold
+      const dragDelta = dragStartWidthRef.current - currentWidth;
+      const threshold = 30; // pixels of drag needed to trigger snap
+      
+      if (dragDelta > threshold) {
+        // Dragging to collapse
         setCurrentWidth(COLLAPSED_WIDTH);
         setIsCollapsed(true);
-      } else {
+      } else if (dragDelta < -threshold) {
+        // Dragging to expand
         setCurrentWidth(EXPANDED_WIDTH);
         setIsCollapsed(false);
+      } else {
+        // Not enough movement, return to original state
+        setCurrentWidth(dragStartWidthRef.current);
       }
     };
 
@@ -123,11 +130,8 @@ export function Sidebar() {
 
       {/* Menu */}
       <nav className="flex-1 px-3">
-        <p 
-          className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap"
-        >
-          Menu
-        </p>
+        {/* Menu label removed - space preserved */}
+        <div className="h-6 mb-2"></div>
         <div className="space-y-1">
           <NavLink 
             to="/dashboard" 
