@@ -1,4 +1,5 @@
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { useSidebarState } from '@/contexts/SidebarContext';
 
 interface PlaybackBarProps {
   currentTrack: Spotify.Track;
@@ -23,7 +24,9 @@ export function PlaybackBar({
   onSeek,
   onExpand,
 }: PlaybackBarProps) {
+  const { isCollapsed } = useSidebarState();
   const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
+  const sidebarWidth = isCollapsed ? 72 : 256;
 
   function formatTime(ms: number) {
     const seconds = Math.floor(ms / 1000);
@@ -34,8 +37,11 @@ export function PlaybackBar({
 
   return (
     <div
-      className="fixed bottom-0 left-[256px] right-0 bg-[#f5f5f7] text-[#1d1d1f] shadow-2xl z-40 border-t border-[#e5e5e7]"
-      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif' }}
+      className="fixed bottom-0 right-0 bg-[#f5f5f7] text-[#1d1d1f] shadow-2xl z-40 border-t border-[#e5e5e7] transition-all duration-300"
+      style={{ 
+        left: sidebarWidth,
+        fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif' 
+      }}
     >
       <div className="px-4 py-2">
         <div className="flex items-center gap-4">

@@ -10,8 +10,53 @@ import Settings from "./pages/Settings";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import Callback from "./pages/Callback";
 import NotFound from "./pages/NotFound";
+import Auth from "./pages/Auth";
+import { useAuth } from "./hooks/useAuth";
 
 const queryClient = new QueryClient();
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Laden...</div>
+      </div>
+    );
+  }
+  
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+  
+  return <>{children}</>;
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/auth" element={<Auth />} />
+      <Route path="/callback" element={<Callback />} />
+      <Route element={
+        <ProtectedRoute>
+          <DashboardLayout />
+        </ProtectedRoute>
+      }>
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/agenda" element={<PlaceholderPage />} />
+        <Route path="/studie" element={<PlaceholderPage />} />
+        <Route path="/cijfers" element={<PlaceholderPage />} />
+        <Route path="/taken" element={<PlaceholderPage />} />
+        <Route path="/bestanden" element={<PlaceholderPage />} />
+        <Route path="/meldingen" element={<PlaceholderPage />} />
+        <Route path="/instellingen" element={<Settings />} />
+      </Route>
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -20,21 +65,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/callback" element={<Callback />} />
-            <Route element={<DashboardLayout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/agenda" element={<PlaceholderPage />} />
-              <Route path="/studie" element={<PlaceholderPage />} />
-              <Route path="/cijfers" element={<PlaceholderPage />} />
-              <Route path="/taken" element={<PlaceholderPage />} />
-              <Route path="/bestanden" element={<PlaceholderPage />} />
-              <Route path="/meldingen" element={<PlaceholderPage />} />
-              <Route path="/instellingen" element={<Settings />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <AppRoutes />
         </BrowserRouter>
       </SidebarProvider>
     </TooltipProvider>
