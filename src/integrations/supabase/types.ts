@@ -14,69 +14,7 @@ export type Database = {
   }
   public: {
     Tables: {
-      profiles: {
-        Row: {
-          created_at: string
-          full_name: string
-          id: string
-          updated_at: string
-          user_id: string
-          username: string
-        }
-        Insert: {
-          created_at?: string
-          full_name: string
-          id?: string
-          updated_at?: string
-          user_id: string
-          username: string
-        }
-        Update: {
-          created_at?: string
-          full_name?: string
-          id?: string
-          updated_at?: string
-          user_id?: string
-          username?: string
-        }
-        Relationships: []
-      }
-      spotify_connections: {
-        Row: {
-          connected_at: string | null
-          id: string
-          spotify_display_name: string | null
-          spotify_email: string | null
-          spotify_refresh_token: string | null
-          spotify_token: string | null
-          spotify_user_id: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          connected_at?: string | null
-          id?: string
-          spotify_display_name?: string | null
-          spotify_email?: string | null
-          spotify_refresh_token?: string | null
-          spotify_token?: string | null
-          spotify_user_id?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          connected_at?: string | null
-          id?: string
-          spotify_display_name?: string | null
-          spotify_email?: string | null
-          spotify_refresh_token?: string | null
-          spotify_token?: string | null
-          spotify_user_id?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
+      [_ in never]: never
     }
     Views: {
       [_ in never]: never

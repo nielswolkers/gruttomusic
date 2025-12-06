@@ -1,9 +1,16 @@
 import { useState } from 'react';
+import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
 import { getStoredAccessToken } from '@/auth/spotifyAuth';
+import { PlaybackBar } from '@/components/PlaybackBar';
+import { NowPlayingExpanded } from '@/components/NowPlayingExpanded';
 import { MusicRecommendations } from '@/components/MusicRecommendations';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { usePlayer } from '@/contexts/PlayerContext';
+
+interface ContextInfo {
+  name: string;
+  type: 'artist' | 'playlist';
+}
 
 type TimeFilter = 'vandaag' | 'week' | 'maand';
 
@@ -15,8 +22,27 @@ const filterTitles: Record<TimeFilter, string> = {
 
 export default function Dashboard() {
   const accessToken = getStoredAccessToken();
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [currentContext, setCurrentContext] = useState<ContextInfo | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('vandaag');
-  const { deviceId, setCurrentContext } = usePlayer();
+
+  const {
+    currentTrack,
+    isPlaying,
+    position,
+    duration,
+    volume,
+    shuffleEnabled,
+    repeatMode,
+    deviceId,
+    togglePlay,
+    nextTrack,
+    previousTrack,
+    toggleShuffle,
+    toggleRepeat,
+    setVolume: setPlayerVolume,
+    seek,
+  } = useSpotifyPlayer(accessToken);
 
   return (
     <div className="min-h-screen bg-background pb-32">
@@ -105,6 +131,43 @@ export default function Dashboard() {
           </Card>
         )}
       </div>
+
+      {/* Playback Bar */}
+      {currentTrack && !isExpanded && (
+        <PlaybackBar
+          currentTrack={currentTrack}
+          isPlaying={isPlaying}
+          position={position}
+          duration={duration}
+          onTogglePlay={togglePlay}
+          onNext={nextTrack}
+          onPrevious={previousTrack}
+          onSeek={seek}
+          onExpand={() => setIsExpanded(true)}
+        />
+      )}
+
+      {/* Expanded Now Playing */}
+      {currentTrack && isExpanded && (
+        <NowPlayingExpanded
+          currentTrack={currentTrack}
+          isPlaying={isPlaying}
+          position={position}
+          duration={duration}
+          volume={volume}
+          shuffleEnabled={shuffleEnabled}
+          repeatMode={repeatMode}
+          contextInfo={currentContext}
+          onTogglePlay={togglePlay}
+          onNext={nextTrack}
+          onPrevious={previousTrack}
+          onSeek={seek}
+          onVolumeChange={setPlayerVolume}
+          onToggleShuffle={toggleShuffle}
+          onToggleRepeat={toggleRepeat}
+          onCollapse={() => setIsExpanded(false)}
+        />
+      )}
     </div>
   );
 }

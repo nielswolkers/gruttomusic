@@ -12,11 +12,10 @@ export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // Check if user is already logged in
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
@@ -25,6 +24,7 @@ export default function Auth() {
     };
     checkUser();
 
+    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         navigate('/dashboard');
@@ -33,19 +33,6 @@ export default function Auth() {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
-
-  const checkUsernameAvailable = async (username: string): Promise<boolean> => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('username', username)
-      .single();
-    
-    if (error && error.code === 'PGRST116') {
-      return true; // No row found, username is available
-    }
-    return false;
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,56 +47,14 @@ export default function Auth() {
         if (error) throw error;
         toast({ title: 'Welkom terug!', description: 'Je bent succesvol ingelogd.' });
       } else {
-        // Validate fields
-        if (!fullName.trim()) {
-          throw new Error('Vul je volledige naam in.');
-        }
-        if (!username.trim()) {
-          throw new Error('Vul een gebruikersnaam in.');
-        }
-        if (username.length < 3) {
-          throw new Error('Gebruikersnaam moet minimaal 3 karakters zijn.');
-        }
-        if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-          throw new Error('Gebruikersnaam mag alleen letters, cijfers en underscores bevatten.');
-        }
-
-        // Check if username is available
-        const isAvailable = await checkUsernameAvailable(username);
-        if (!isAvailable) {
-          throw new Error('Deze gebruikersnaam is al in gebruik. Kies een andere.');
-        }
-
-        // Sign up
-        const { data: authData, error: signUpError } = await supabase.auth.signUp({
+        const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             emailRedirectTo: `${window.location.origin}/dashboard`,
           },
         });
-        if (signUpError) throw signUpError;
-
-        // Create profile
-        if (authData.user) {
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert({
-              user_id: authData.user.id,
-              full_name: fullName.trim(),
-              username: username.trim().toLowerCase(),
-            });
-          
-          if (profileError) {
-            // If profile creation fails, we should handle it
-            console.error('Profile creation error:', profileError);
-            if (profileError.code === '23505') {
-              throw new Error('Deze gebruikersnaam is al in gebruik.');
-            }
-            throw profileError;
-          }
-        }
-
+        if (error) throw error;
         toast({ title: 'Account aangemaakt!', description: 'Je bent succesvol geregistreerd.' });
       }
     } catch (error: any) {
@@ -140,32 +85,6 @@ export default function Auth() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {!isLogin && (
-              <>
-                <div>
-                  <Input
-                    type="text"
-                    placeholder="Volledige naam"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    required
-                  />
-                </div>
-                <div>
-                  <Input
-                    type="text"
-                    placeholder="Gebruikersnaam"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value.toLowerCase())}
-                    required
-                    minLength={3}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Alleen letters, cijfers en underscores
-                  </p>
-                </div>
-              </>
-            )}
             <div>
               <Input
                 type="email"
