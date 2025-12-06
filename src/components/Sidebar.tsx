@@ -1,4 +1,4 @@
-import { Home, Calendar, Clock, BarChart3, CheckSquare, FileText, Bell, User } from 'lucide-react';
+import { Home, Calendar, Clock, BarChart3, CheckSquare, FileText, Bell, User, Settings } from 'lucide-react';
 import { NavLink } from './NavLink';
 import gruttoLogo from '@/assets/grutto-logo.png';
 import gruttoIcon from '@/assets/grutto-icon.png';
@@ -252,7 +252,7 @@ export function Sidebar() {
         </NavLink>
         
         <NavLink 
-          to="/instellingen" 
+          to="/account" 
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
           activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
         >
@@ -264,6 +264,21 @@ export function Sidebar() {
               transition: isDragging ? 'none' : 'opacity 0.3s ease-out'
             }}
           >Account</span>
+        </NavLink>
+
+        <NavLink 
+          to="/instellingen" 
+          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+          activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+        >
+          <Settings className="w-5 h-5 flex-shrink-0" />
+          <span 
+            className="whitespace-nowrap overflow-hidden"
+            style={{ 
+              opacity: textOpacity,
+              transition: isDragging ? 'none' : 'opacity 0.3s ease-out'
+            }}
+          >Instellingen</span>
         </NavLink>
       </div>
     </aside>
