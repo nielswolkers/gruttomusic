@@ -14,9 +14,180 @@ export type Database = {
   }
   public: {
     Tables: {
+      file_shares: {
+        Row: {
+          file_id: string
+          id: string
+          shared_by_user_id: string
+          shared_date: string
+          shared_with_user_id: string
+        }
+        Insert: {
+          file_id: string
+          id?: string
+          shared_by_user_id: string
+          shared_date?: string
+          shared_with_user_id: string
+        }
+        Update: {
+          file_id?: string
+          id?: string
+          shared_by_user_id?: string
+          shared_date?: string
+          shared_with_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "file_shares_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      files: {
+        Row: {
+          deleted_at: string | null
+          deleted_by: string | null
+          file_size: number
+          file_type: string
+          filename: string
+          folder_id: string | null
+          id: string
+          is_favorite: boolean | null
+          owner_id: string
+          storage_url: string
+          updated_at: string
+          upload_date: string
+        }
+        Insert: {
+          deleted_at?: string | null
+          deleted_by?: string | null
+          file_size: number
+          file_type: string
+          filename: string
+          folder_id?: string | null
+          id?: string
+          is_favorite?: boolean | null
+          owner_id: string
+          storage_url: string
+          updated_at?: string
+          upload_date?: string
+        }
+        Update: {
+          deleted_at?: string | null
+          deleted_by?: string | null
+          file_size?: number
+          file_type?: string
+          filename?: string
+          folder_id?: string | null
+          id?: string
+          is_favorite?: boolean | null
+          owner_id?: string
+          storage_url?: string
+          updated_at?: string
+          upload_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "files_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      folders: {
+        Row: {
+          color: string
+          created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
+          id: string
+          name: string
+          owner_id: string
+          parent_folder_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
+          id?: string
+          name: string
+          owner_id: string
+          parent_folder_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
+          id?: string
+          name?: string
+          owner_id?: string
+          parent_folder_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "folders_parent_folder_id_fkey"
+            columns: ["parent_folder_id"]
+            isOneToOne: false
+            referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          created_at: string
+          file_id: string | null
+          id: string
+          message: string
+          read_status: boolean | null
+          recipient_id: string
+          sender_id: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          file_id?: string | null
+          id?: string
+          message: string
+          read_status?: boolean | null
+          recipient_id: string
+          sender_id: string
+          type: string
+        }
+        Update: {
+          created_at?: string
+          file_id?: string | null
+          id?: string
+          message?: string
+          read_status?: boolean | null
+          recipient_id?: string
+          sender_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
+          display_name: string | null
           full_name: string
           id: string
           updated_at: string
@@ -25,6 +196,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          display_name?: string | null
           full_name: string
           id?: string
           updated_at?: string
@@ -33,6 +205,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          display_name?: string | null
           full_name?: string
           id?: string
           updated_at?: string

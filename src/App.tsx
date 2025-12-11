@@ -7,6 +7,9 @@ import { SidebarProvider } from "./contexts/SidebarContext";
 import DashboardLayout from "./pages/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
+import Bestanden from "./pages/Bestanden";
+import Meldingen from "./pages/Meldingen";
+import Account from "./pages/Account";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import Callback from "./pages/Callback";
 import NotFound from "./pages/NotFound";
@@ -49,8 +52,11 @@ function AppRoutes() {
         <Route path="/studie" element={<PlaceholderPage />} />
         <Route path="/cijfers" element={<PlaceholderPage />} />
         <Route path="/taken" element={<PlaceholderPage />} />
-        <Route path="/bestanden" element={<PlaceholderPage />} />
-        <Route path="/meldingen" element={<PlaceholderPage />} />
+        <Route path="/bestanden" element={<Bestanden />} />
+        <Route path="/bestanden/folder/:folderId" element={<PlaceholderPage />} />
+        <Route path="/bestanden/preview/:fileId" element={<PlaceholderPage />} />
+        <Route path="/meldingen" element={<Meldingen />} />
+        <Route path="/account" element={<Account />} />
         <Route path="/instellingen" element={<Settings />} />
       </Route>
       <Route path="*" element={<NotFound />} />
