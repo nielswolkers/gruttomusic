@@ -1,29 +1,5 @@
+import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { useSidebarState } from '@/contexts/SidebarContext';
-
-// Apple Music style icons as SVG components
-const PlayIcon = ({ className, fill }: { className?: string; fill?: string }) => (
-  <svg className={className} viewBox="0 0 24 24" fill={fill || "currentColor"}>
-    <path d="M8 5.14v14l11-7-11-7z" />
-  </svg>
-);
-
-const PauseIcon = ({ className, fill }: { className?: string; fill?: string }) => (
-  <svg className={className} viewBox="0 0 24 24" fill={fill || "currentColor"}>
-    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-  </svg>
-);
-
-const SkipBackIcon = ({ className, fill }: { className?: string; fill?: string }) => (
-  <svg className={className} viewBox="0 0 24 24" fill={fill || "currentColor"}>
-    <path d="M6 6h2v12H6V6zm3.5 6l8.5 6V6l-8.5 6z" />
-  </svg>
-);
-
-const SkipForwardIcon = ({ className, fill }: { className?: string; fill?: string }) => (
-  <svg className={className} viewBox="0 0 24 24" fill={fill || "currentColor"}>
-    <path d="M16 6h2v12h-2V6zM6 18l8.5-6L6 6v12z" />
-  </svg>
-);
 
 interface PlaybackBarProps {
   currentTrack: Spotify.Track;
@@ -89,24 +65,24 @@ export function PlaybackBar({
                 onClick={(e) => { e.stopPropagation(); onPrevious(); }}
                 className="text-[#6e6e73] hover:text-[#1d1d1f] transition"
               >
-                <SkipBackIcon className="w-6 h-6" fill="currentColor" />
+                <SkipBack className="w-5 h-5" fill="currentColor" />
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onTogglePlay(); }}
                 className="w-10 h-10 bg-[#1d1d1f] hover:scale-105 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 relative overflow-hidden"
               >
                 <div className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${isPlaying ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                  <PauseIcon className="w-5 h-5" fill="white" />
+                  <Pause className="w-5 h-5 text-white" fill="white" />
                 </div>
                 <div className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${!isPlaying ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                  <PlayIcon className="w-5 h-5 ml-0.5" fill="white" />
+                  <Play className="w-5 h-5 text-white ml-0.5" fill="white" />
                 </div>
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onNext(); }}
                 className="text-[#6e6e73] hover:text-[#1d1d1f] transition"
               >
-                <SkipForwardIcon className="w-6 h-6" fill="currentColor" />
+                <SkipForward className="w-5 h-5" fill="currentColor" />
               </button>
             </div>
 
