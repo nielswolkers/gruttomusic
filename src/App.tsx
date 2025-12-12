@@ -8,6 +8,8 @@ import DashboardLayout from "./pages/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import Bestanden from "./pages/Bestanden";
+import FolderView from "./pages/FolderView";
+import FilePreview from "./pages/FilePreview";
 import Meldingen from "./pages/Meldingen";
 import Account from "./pages/Account";
 import PlaceholderPage from "./pages/PlaceholderPage";
@@ -53,8 +55,8 @@ function AppRoutes() {
         <Route path="/cijfers" element={<PlaceholderPage />} />
         <Route path="/taken" element={<PlaceholderPage />} />
         <Route path="/bestanden" element={<Bestanden />} />
-        <Route path="/bestanden/folder/:folderId" element={<PlaceholderPage />} />
-        <Route path="/bestanden/preview/:fileId" element={<PlaceholderPage />} />
+        <Route path="/bestanden/folder/:folderId" element={<FolderView />} />
+        <Route path="/bestanden/preview/:fileId" element={<FilePreview />} />
         <Route path="/meldingen" element={<Meldingen />} />
         <Route path="/account" element={<Account />} />
         <Route path="/instellingen" element={<Settings />} />
