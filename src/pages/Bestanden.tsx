@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Upload, FolderPlus } from "lucide-react";
@@ -113,12 +112,12 @@ const Bestanden = () => {
             />
           </div>
 
-          <Button onClick={() => setShowFolderDialog(true)} className="rounded-full gap-2 h-11 px-5">
+          <Button onClick={() => setShowFolderDialog(true)} variant="outline" className="rounded-full gap-2 h-11 px-5 border-primary text-primary hover:bg-primary/5">
             <FolderPlus className="w-4 h-4" />
             Voeg map toe
           </Button>
 
-          <Button onClick={() => setShowUpload(!showUpload)} className="rounded-full gap-2 h-11 px-5">
+          <Button onClick={() => setShowUpload(!showUpload)} variant="outline" className="rounded-full gap-2 h-11 px-5 border-primary text-primary hover:bg-primary/5">
             <Upload className="w-4 h-4" />
             Importeer
           </Button>

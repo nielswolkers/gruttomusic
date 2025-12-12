@@ -1,16 +1,9 @@
 import { useState } from 'react';
-import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
+import { useOutletContext } from 'react-router-dom';
 import { getStoredAccessToken } from '@/auth/spotifyAuth';
-import { PlaybackBar } from '@/components/PlaybackBar';
-import { NowPlayingExpanded } from '@/components/NowPlayingExpanded';
 import { MusicRecommendations } from '@/components/MusicRecommendations';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-
-interface ContextInfo {
-  name: string;
-  type: 'artist' | 'playlist';
-}
 
 type TimeFilter = 'vandaag' | 'week' | 'maand';
 
@@ -20,33 +13,19 @@ const filterTitles: Record<TimeFilter, string> = {
   maand: 'Deze maand',
 };
 
+interface OutletContextType {
+  deviceId: string | null;
+  setCurrentContext: (name: string, type: 'artist' | 'playlist') => void;
+}
+
 export default function Dashboard() {
   const accessToken = getStoredAccessToken();
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [currentContext, setCurrentContext] = useState<ContextInfo | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('vandaag');
-
-  const {
-    currentTrack,
-    isPlaying,
-    position,
-    duration,
-    volume,
-    shuffleEnabled,
-    repeatMode,
-    deviceId,
-    togglePlay,
-    nextTrack,
-    previousTrack,
-    toggleShuffle,
-    toggleRepeat,
-    setVolume: setPlayerVolume,
-    seek,
-  } = useSpotifyPlayer(accessToken);
+  const { deviceId, setCurrentContext } = useOutletContext<OutletContextType>() || {};
 
   return (
-    <div className="min-h-screen bg-background pb-32">
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
+    <div className="min-h-screen bg-background">
+      <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-4xl font-bold text-foreground">{filterTitles[timeFilter]}</h1>
@@ -112,8 +91,8 @@ export default function Dashboard() {
         {/* Music Recommendations */}
         {accessToken ? (
           <MusicRecommendations 
-            deviceId={deviceId}
-            onContextChange={(name, type) => setCurrentContext({ name, type })}
+            deviceId={deviceId || null}
+            onContextChange={(name, type) => setCurrentContext?.(name, type)}
           />
         ) : (
           <Card>
@@ -131,43 +110,6 @@ export default function Dashboard() {
           </Card>
         )}
       </div>
-
-      {/* Playback Bar */}
-      {currentTrack && !isExpanded && (
-        <PlaybackBar
-          currentTrack={currentTrack}
-          isPlaying={isPlaying}
-          position={position}
-          duration={duration}
-          onTogglePlay={togglePlay}
-          onNext={nextTrack}
-          onPrevious={previousTrack}
-          onSeek={seek}
-          onExpand={() => setIsExpanded(true)}
-        />
-      )}
-
-      {/* Expanded Now Playing */}
-      {currentTrack && isExpanded && (
-        <NowPlayingExpanded
-          currentTrack={currentTrack}
-          isPlaying={isPlaying}
-          position={position}
-          duration={duration}
-          volume={volume}
-          shuffleEnabled={shuffleEnabled}
-          repeatMode={repeatMode}
-          contextInfo={currentContext}
-          onTogglePlay={togglePlay}
-          onNext={nextTrack}
-          onPrevious={previousTrack}
-          onSeek={seek}
-          onVolumeChange={setPlayerVolume}
-          onToggleShuffle={toggleShuffle}
-          onToggleRepeat={toggleRepeat}
-          onCollapse={() => setIsExpanded(false)}
-        />
-      )}
     </div>
   );
 }

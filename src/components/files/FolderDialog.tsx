@@ -17,9 +17,9 @@ import folderPink from "@/assets/folder-pink.png";
 import folderRed from "@/assets/folder-red.png";
 import folderBlue from "@/assets/folder-blue.png";
 import folderGreen from "@/assets/folder-green.png";
-import folderBlueDark from "@/assets/folder-blue-dark.png";
 import folderYellow from "@/assets/folder-yellow.png";
-import folderGold from "@/assets/folder-gold.png";
+import folderSalmon from "@/assets/folder-salmon.png";
+import folderGray from "@/assets/folder-gray.png";
 
 interface FolderDialogProps {
   open: boolean;
@@ -30,14 +30,14 @@ interface FolderDialogProps {
 }
 
 const FOLDER_COLORS = [
+  { name: "Geel", color: "#E8C547", icon: folderYellow },
   { name: "Oranje", color: "#ECA869", icon: folderOrange },
   { name: "Roze", color: "#E4B4E6", icon: folderPink },
   { name: "Rood", color: "#E86C6C", icon: folderRed },
   { name: "Blauw", color: "#7FABDB", icon: folderBlue },
   { name: "Groen", color: "#6BC497", icon: folderGreen },
-  { name: "Donkerblauw", color: "#4B8FBA", icon: folderBlueDark },
-  { name: "Geel", color: "#E8C547", icon: folderYellow },
-  { name: "Goud", color: "#D4A017", icon: folderGold },
+  { name: "Zalm", color: "#FFB6B6", icon: folderSalmon },
+  { name: "Grijs", color: "#9CA3AF", icon: folderGray },
 ];
 
 export const FolderDialog = ({ open, onClose, onSuccess, userId, parentFolderId }: FolderDialogProps) => {
