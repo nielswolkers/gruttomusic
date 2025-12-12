@@ -17,9 +17,9 @@ import folderPink from "@/assets/folder-pink.png";
 import folderRed from "@/assets/folder-red.png";
 import folderBlue from "@/assets/folder-blue.png";
 import folderGreen from "@/assets/folder-green.png";
-import folderBlueDark from "@/assets/folder-blue-dark.png";
 import folderYellow from "@/assets/folder-yellow.png";
-import folderGold from "@/assets/folder-gold.png";
+import folderSalmon from "@/assets/folder-salmon.png";
+import folderGray from "@/assets/folder-gray.png";
 
 interface FolderCardProps {
   folder: {
@@ -34,14 +34,14 @@ interface FolderCardProps {
 }
 
 const FOLDER_ICON_MAP: Record<string, string> = {
+  "#E8C547": folderYellow,
   "#ECA869": folderOrange,
   "#E4B4E6": folderPink,
   "#E86C6C": folderRed,
   "#7FABDB": folderBlue,
   "#6BC497": folderGreen,
-  "#4B8FBA": folderBlueDark,
-  "#E8C547": folderYellow,
-  "#D4A017": folderGold,
+  "#FFB6B6": folderSalmon,
+  "#9CA3AF": folderGray,
 };
 
 export const FolderCard = ({ folder, fileCount, onUpdate }: FolderCardProps) => {
@@ -50,7 +50,7 @@ export const FolderCard = ({ folder, fileCount, onUpdate }: FolderCardProps) => 
   const [showShareDialog, setShowShareDialog] = useState(false);
 
   const getFolderIcon = (color: string) => {
-    return FOLDER_ICON_MAP[color] || folderGreen;
+    return FOLDER_ICON_MAP[color] || folderYellow;
   };
 
   const handleDelete = async (e: React.MouseEvent) => {
