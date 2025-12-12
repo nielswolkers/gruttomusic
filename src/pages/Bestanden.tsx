@@ -10,6 +10,12 @@ import { FolderDialog } from "@/components/files/FolderDialog";
 import { FolderCard } from "@/components/files/FolderCard";
 import { useAuth } from "@/hooks/useAuth";
 
+const TABS = [
+  { key: "recent" as const, label: "Recent" },
+  { key: "shared" as const, label: "Gedeeld" },
+  { key: "favorites" as const, label: "Favorieten" },
+];
+
 const Bestanden = () => {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
@@ -23,6 +29,8 @@ const Bestanden = () => {
   const [fileTypeFilter, setFileTypeFilter] = useState<string>("all");
   const [folders, setFolders] = useState<any[]>([]);
   const [folderFileCounts, setFolderFileCounts] = useState<Record<string, number>>({});
+
+  const activeIndex = TABS.findIndex(tab => tab.key === activeView);
 
   useEffect(() => {
     if (user) {
@@ -72,32 +80,33 @@ const Bestanden = () => {
 
   return (
     <div className="w-full">
+      {/* Page Title */}
+      <h1 className="text-2xl font-semibold mb-6">Bestanden</h1>
+
       <div className="mb-8 flex items-center justify-between gap-6">
-        <div className="flex items-center gap-8">
-          <button
-            onClick={() => setActiveView("recent")}
-            className={`text-[1.15rem] font-medium pb-2 border-b-2 transition-colors ${
-              activeView === "recent" ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Recent
-          </button>
-          <button
-            onClick={() => setActiveView("shared")}
-            className={`text-[1.15rem] font-medium pb-2 border-b-2 transition-colors ${
-              activeView === "shared" ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Gedeeld
-          </button>
-          <button
-            onClick={() => setActiveView("favorites")}
-            className={`text-[1.15rem] font-medium pb-2 border-b-2 transition-colors ${
-              activeView === "favorites" ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Favorieten
-          </button>
+        {/* Tab Navigation with sliding indicator */}
+        <div className="relative flex items-center gap-8">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveView(tab.key)}
+              className={`text-[1.15rem] font-medium pb-2 transition-colors ${
+                activeView === tab.key 
+                  ? "text-foreground" 
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+          {/* Sliding indicator */}
+          <div 
+            className="absolute bottom-0 h-0.5 bg-foreground transition-all duration-300 ease-out"
+            style={{
+              left: `${activeIndex * 106}px`,
+              width: activeIndex === 0 ? '52px' : activeIndex === 1 ? '60px' : '76px',
+            }}
+          />
         </div>
 
         <div className="flex items-center gap-3">
