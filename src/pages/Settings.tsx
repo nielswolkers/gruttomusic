@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getStoredAccessToken, redirectToSpotifyAuth, logout } from '@/auth/spotifyAuth';
+import { getStoredAccessToken, redirectToSpotifyAuth, logout, refreshAccessToken } from '@/auth/spotifyAuth';
 import { getUserProfile } from '@/api/spotifyApi';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/hooks/use-toast';
@@ -14,17 +15,68 @@ export default function Settings() {
 
   useEffect(() => {
     const checkSpotifyConnection = async () => {
-      const token = getStoredAccessToken();
+      // First check localStorage
+      let token = getStoredAccessToken();
+      
       if (token) {
         try {
           const profile = await getUserProfile(token);
           setSpotifyUser(profile);
           setSpotifyConnected(true);
+          setLoading(false);
+          return;
         } catch (error) {
-          console.error('Failed to fetch Spotify profile:', error);
-          setSpotifyConnected(false);
+          console.error('Failed to fetch Spotify profile from localStorage token:', error);
         }
       }
+
+      // If no valid localStorage token, check database
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        const { data: spotifyConnection, error } = await supabase
+          .from('spotify_connections')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (spotifyConnection && !error) {
+          // Try to restore tokens from database
+          if (spotifyConnection.spotify_refresh_token) {
+            try {
+              // Set refresh token in localStorage first
+              localStorage.setItem('refresh_token', spotifyConnection.spotify_refresh_token);
+              
+              // Try to get a new access token
+              const newToken = await refreshAccessToken();
+              
+              if (newToken) {
+                const profile = await getUserProfile(newToken);
+                setSpotifyUser(profile);
+                setSpotifyConnected(true);
+                
+                // Update token in database
+                await supabase
+                  .from('spotify_connections')
+                  .update({ 
+                    spotify_token: newToken,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('user_id', user.id);
+              }
+            } catch (refreshError) {
+              console.error('Failed to refresh token:', refreshError);
+              // Connection exists but tokens are invalid
+              setSpotifyUser({
+                display_name: spotifyConnection.spotify_display_name,
+                email: spotifyConnection.spotify_email,
+              });
+              setSpotifyConnected(false);
+            }
+          }
+        }
+      }
+      
       setLoading(false);
     };
 
@@ -44,13 +96,24 @@ export default function Settings() {
     }
   };
 
-  const handleSpotifyLogout = () => {
+  const handleSpotifyLogout = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (user) {
+      // Remove from database
+      await supabase
+        .from('spotify_connections')
+        .delete()
+        .eq('user_id', user.id);
+    }
+    
+    // Clear localStorage
     logout();
     setSpotifyConnected(false);
     setSpotifyUser(null);
     toast({
-      title: 'Disconnected',
-      description: 'Successfully disconnected from Spotify',
+      title: 'Ontkoppeld',
+      description: 'Spotify is succesvol ontkoppeld van je account',
     });
   };
 
@@ -105,15 +168,15 @@ export default function Settings() {
                   </div>
                   <div className="flex items-center gap-2 text-primary">
                     <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-                    <span className="text-sm font-medium">Connected</span>
+                    <span className="text-sm font-medium">Verbonden</span>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={() => navigate('/dashboard')} variant="default">
-                    Go to Dashboard
+                    Ga naar Dashboard
                   </Button>
                   <Button onClick={handleSpotifyLogout} variant="outline">
-                    Disconnect Spotify
+                    Ontkoppel Spotify
                   </Button>
                 </div>
               </div>

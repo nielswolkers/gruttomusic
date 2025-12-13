@@ -12,10 +12,13 @@ export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
+  const [schoolName, setSchoolName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [usernameError, setUsernameError] = useState('');
 
   useEffect(() => {
-    // Check if user is already logged in
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
@@ -24,7 +27,6 @@ export default function Auth() {
     };
     checkUser();
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         navigate('/dashboard');
@@ -33,6 +35,38 @@ export default function Auth() {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  const checkUsernameAvailability = async (usernameToCheck: string): Promise<boolean> => {
+    if (!usernameToCheck || usernameToCheck.length < 3) {
+      setUsernameError('Gebruikersnaam moet minimaal 3 tekens bevatten');
+      return false;
+    }
+
+    const usernameRegex = /^[a-zA-Z0-9_]+$/;
+    if (!usernameRegex.test(usernameToCheck)) {
+      setUsernameError('Alleen letters, cijfers en underscores toegestaan');
+      return false;
+    }
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('username')
+      .eq('username', usernameToCheck.toLowerCase())
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error checking username:', error);
+      return false;
+    }
+
+    if (data) {
+      setUsernameError('Deze gebruikersnaam is al in gebruik');
+      return false;
+    }
+
+    setUsernameError('');
+    return true;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,14 +81,42 @@ export default function Auth() {
         if (error) throw error;
         toast({ title: 'Welkom terug!', description: 'Je bent succesvol ingelogd.' });
       } else {
-        const { error } = await supabase.auth.signUp({
+        // Validate username availability
+        const isUsernameAvailable = await checkUsernameAvailability(username);
+        if (!isUsernameAvailable) {
+          setLoading(false);
+          return;
+        }
+
+        // Sign up user
+        const { data: authData, error: authError } = await supabase.auth.signUp({
           email,
           password,
           options: {
             emailRedirectTo: `${window.location.origin}/dashboard`,
+            data: {
+              full_name: fullName,
+              username: username.toLowerCase(),
+              school_name: schoolName || null,
+            },
           },
         });
-        if (error) throw error;
+        if (authError) throw authError;
+
+        // Create profile
+        if (authData.user) {
+          const { error: profileError } = await supabase.from('profiles').insert({
+            user_id: authData.user.id,
+            full_name: fullName,
+            username: username.toLowerCase(),
+            display_name: fullName.split(' ')[0],
+          });
+
+          if (profileError) {
+            console.error('Profile creation error:', profileError);
+          }
+        }
+
         toast({ title: 'Account aangemaakt!', description: 'Je bent succesvol geregistreerd.' });
       }
     } catch (error: any) {
@@ -85,6 +147,44 @@ export default function Auth() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {!isLogin && (
+              <>
+                <div>
+                  <Input
+                    type="text"
+                    placeholder="Volledige naam"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <Input
+                    type="text"
+                    placeholder="Gebruikersnaam"
+                    value={username}
+                    onChange={(e) => {
+                      setUsername(e.target.value);
+                      setUsernameError('');
+                    }}
+                    onBlur={() => username && checkUsernameAvailability(username)}
+                    required
+                    className={usernameError ? 'border-destructive' : ''}
+                  />
+                  {usernameError && (
+                    <p className="text-sm text-destructive mt-1">{usernameError}</p>
+                  )}
+                </div>
+                <div>
+                  <Input
+                    type="text"
+                    placeholder="School naam (optioneel)"
+                    value={schoolName}
+                    onChange={(e) => setSchoolName(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
             <div>
               <Input
                 type="email"
@@ -111,7 +211,10 @@ export default function Auth() {
           <div className="mt-4 text-center">
             <button
               type="button"
-              onClick={() => setIsLogin(!isLogin)}
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setUsernameError('');
+              }}
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               {isLogin 
