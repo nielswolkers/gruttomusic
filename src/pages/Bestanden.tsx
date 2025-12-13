@@ -56,7 +56,8 @@ const Bestanden = () => {
         const { count } = await supabase
           .from('files')
           .select('*', { count: 'exact', head: true })
-          .eq('folder_id', folder.id);
+          .eq('folder_id', folder.id)
+          .is('deleted_at', null);
         counts[folder.id] = count || 0;
       }
       setFolderFileCounts(counts);

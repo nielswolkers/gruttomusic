@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { FileText, FileIcon, Undo2, Trash2 } from "lucide-react";
@@ -14,8 +15,8 @@ interface Notification {
   created_at: string;
   sender_id: string;
   file_id: string | null;
-  profiles?: { username: string; display_name: string | null };
-  files?: { filename: string; file_size: number };
+  profiles?: { username: string; display_name: string | null; full_name: string };
+  files?: { id: string; filename: string; file_size: number; deleted_at: string | null };
 }
 
 const formatFileSize = (bytes: number): string => {
@@ -25,6 +26,7 @@ const formatFileSize = (bytes: number): string => {
 };
 
 const Meldingen = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,12 +48,17 @@ const Meldingen = () => {
       if (error) throw error;
 
       const senderIds = [...new Set(notifData?.map(n => n.sender_id) || [])];
-      const { data: profiles } = await supabase.from('profiles').select('user_id, username, display_name').in('user_id', senderIds);
+      const { data: profiles } = await supabase.from('profiles').select('user_id, username, display_name, full_name').in('user_id', senderIds);
 
+      // Get files including deleted ones for recovery notifications
       const fileIds = [...new Set(notifData?.filter(n => n.file_id).map(n => n.file_id!) || [])];
       let fileMap = new Map();
       if (fileIds.length > 0) {
-        const { data: files } = await supabase.from('files').select('id, filename, file_size').in('id', fileIds);
+        // Query files table directly without RLS restriction on deleted_at
+        const { data: files } = await supabase
+          .from('files')
+          .select('id, filename, file_size, deleted_at')
+          .in('id', fileIds);
         fileMap = new Map(files?.map(f => [f.id, f]) || []);
       }
 
@@ -109,6 +116,13 @@ const Meldingen = () => {
     }
   };
 
+  const handleFileClick = (notification: Notification) => {
+    // Only navigate if file exists and is not deleted
+    if (notification.file_id && notification.files && !notification.files.deleted_at) {
+      navigate(`/bestanden/preview/${notification.file_id}`);
+    }
+  };
+
   if (!user) return null;
 
   return (
@@ -143,6 +157,7 @@ const Meldingen = () => {
           {notifications.map((notification) => {
             const isDeleteNotification = notification.type === 'file_deleted' || notification.type === 'folder_deleted';
             const isShareNotification = notification.type === 'file_shared';
+            const canOpenFile = notification.file_id && notification.files && !notification.files.deleted_at;
 
             return (
               <div 
@@ -155,7 +170,7 @@ const Meldingen = () => {
                     {isShareNotification ? (
                       <>
                         <span className="font-semibold">
-                          {notification.profiles?.display_name || notification.profiles?.username}
+                          {notification.profiles?.full_name || notification.profiles?.display_name || notification.profiles?.username}
                         </span>
                         {' '}heeft een bestand met u gedeeld.
                       </>
@@ -173,9 +188,12 @@ const Meldingen = () => {
                   </Button>
                 </div>
 
-                {/* File info card */}
+                {/* File info card - clickable to open file */}
                 {notification.files && (
-                  <div className="bg-secondary/50 rounded-xl p-4 mb-3">
+                  <div 
+                    className={`bg-secondary/50 rounded-xl p-4 mb-3 ${canOpenFile ? 'cursor-pointer hover:bg-secondary/70 transition-colors' : ''}`}
+                    onClick={() => canOpenFile && handleFileClick(notification)}
+                  >
                     <div className="flex items-center gap-3">
                       <FileIcon className="w-5 h-5 text-muted-foreground shrink-0" />
                       <div className="min-w-0 flex-1">
