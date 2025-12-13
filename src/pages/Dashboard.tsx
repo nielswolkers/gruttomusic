@@ -27,8 +27,8 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-4xl font-bold text-foreground">{filterTitles[timeFilter]}</h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-4xl font-bold text-foreground">Home</h1>
           
           {/* macOS-style segmented control */}
           <div className="flex bg-muted rounded-lg p-1 gap-0.5">

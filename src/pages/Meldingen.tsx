@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { FileText, FileIcon, Undo2, Trash2, Calendar } from "lucide-react";
+import { FileText, FileIcon, Undo2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatRelativeDate } from "@/lib/dateUtils";
 import { useAuth } from "@/hooks/useAuth";
@@ -27,7 +26,6 @@ const formatFileSize = (bytes: number): string => {
 
 const Meldingen = () => {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,7 +46,7 @@ const Meldingen = () => {
       if (error) throw error;
 
       const senderIds = [...new Set(notifData?.map(n => n.sender_id) || [])];
-      const { data: profiles } = await supabase.from('profiles').select('id, username, display_name').in('id', senderIds);
+      const { data: profiles } = await supabase.from('profiles').select('user_id, username, display_name').in('user_id', senderIds);
 
       const fileIds = [...new Set(notifData?.filter(n => n.file_id).map(n => n.file_id!) || [])];
       let fileMap = new Map();
@@ -57,7 +55,7 @@ const Meldingen = () => {
         fileMap = new Map(files?.map(f => [f.id, f]) || []);
       }
 
-      const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+      const profileMap = new Map(profiles?.map(p => [p.user_id, p]) || []);
       const enrichedNotifications = notifData?.map(n => ({
         ...n,
         profiles: profileMap.get(n.sender_id),
@@ -116,7 +114,7 @@ const Meldingen = () => {
   return (
     <div className="w-full max-w-4xl">
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-semibold">Meldingen</h1>
+        <h1 className="text-4xl font-bold text-foreground">Meldingen</h1>
         <Button 
           size="sm" 
           variant="secondary" 
@@ -145,33 +143,22 @@ const Meldingen = () => {
           {notifications.map((notification) => {
             const isDeleteNotification = notification.type === 'file_deleted' || notification.type === 'folder_deleted';
             const isShareNotification = notification.type === 'file_shared';
-            const isReminderNotification = notification.type === 'reminder';
 
             return (
               <div 
                 key={notification.id} 
-                className={`rounded-2xl border p-5 ${
-                  isReminderNotification 
-                    ? 'border-destructive/30 bg-destructive/5' 
-                    : 'bg-card border-border'
-                }`}
+                className="rounded-2xl border bg-card border-border p-5"
               >
                 {/* Header with message and dismiss button */}
                 <div className="flex items-start justify-between gap-4 mb-3">
                   <p className="text-[15px] flex-1">
-                    {isDeleteNotification ? (
-                      notification.type === 'folder_deleted' 
-                        ? 'U heeft een map naar de prullenbak verplaatst.' 
-                        : 'U heeft een bestand naar de prullenbak verplaatst.'
-                    ) : isShareNotification ? (
+                    {isShareNotification ? (
                       <>
                         <span className="font-semibold">
                           {notification.profiles?.display_name || notification.profiles?.username}
                         </span>
                         {' '}heeft een bestand met u gedeeld.
                       </>
-                    ) : isReminderNotification ? (
-                      notification.message
                     ) : (
                       notification.message
                     )}
@@ -186,29 +173,20 @@ const Meldingen = () => {
                   </Button>
                 </div>
 
-                {/* File/Reminder info card */}
-                {(notification.files || isReminderNotification) && (
+                {/* File info card */}
+                {notification.files && (
                   <div className="bg-secondary/50 rounded-xl p-4 mb-3">
                     <div className="flex items-center gap-3">
-                      {isReminderNotification ? (
-                        <Calendar className="w-5 h-5 text-muted-foreground shrink-0" />
-                      ) : (
-                        <FileIcon className="w-5 h-5 text-muted-foreground shrink-0" />
-                      )}
+                      <FileIcon className="w-5 h-5 text-muted-foreground shrink-0" />
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-sm truncate">
-                          {isReminderNotification ? 'SO H9 (2x)' : notification.files?.filename}
+                          {notification.files?.filename}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {isReminderNotification ? 'Woensdag 10 December' : formatFileSize(notification.files?.file_size || 0)}
+                          {formatFileSize(notification.files?.file_size || 0)}
                         </p>
                       </div>
                     </div>
-                    {isReminderNotification && (
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Advies door <span className="text-primary">Grutto Reminders</span>
-                      </p>
-                    )}
                   </div>
                 )}
 

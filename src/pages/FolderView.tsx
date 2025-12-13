@@ -298,7 +298,7 @@ const FolderView = () => {
             <ArrowLeft className="w-5 h-5" />
           </Button>
 
-          <h1 className="text-2xl font-semibold">{folder.name}</h1>
+          <h1 className="text-4xl font-bold text-foreground">{folder.name}</h1>
         </div>
 
         {/* Actions Group */}
