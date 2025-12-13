@@ -88,13 +88,13 @@ export const ShareDialog = ({ file, open, onClose }: ShareDialogProps) => {
 
       const { data: profiles, error: profileError } = await supabase
         .from('profiles')
-        .select('id, username, display_name')
-        .in('id', uniqueUserIds);
+        .select('user_id, username, display_name, full_name')
+        .in('user_id', uniqueUserIds);
 
       if (profileError) throw profileError;
 
-      const filtered = (profiles || []).filter(p => !currentShares.includes(p.id));
-      setRecommendations(filtered);
+      const filtered = (profiles || []).filter(p => !currentShares.includes(p.user_id));
+      setRecommendations(filtered.map(p => ({ id: p.user_id, username: p.username, display_name: p.display_name || p.full_name })));
     } catch (error: any) {
       console.error("Failed to load recommendations:", error);
     }
@@ -109,17 +109,16 @@ export const ShareDialog = ({ file, open, onClose }: ShareDialogProps) => {
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, display_name')
-        .neq('id', currentUserId!)
-        .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
+        .select('user_id, username, display_name, full_name')
+        .neq('user_id', currentUserId!)
+        .or(`username.ilike.%${query}%,display_name.ilike.%${query}%,full_name.ilike.%${query}%`)
         .limit(10);
 
       if (error) throw error;
 
-      const filtered = (data || []).filter(
-        profile => !currentShares.includes(profile.id) &&
-          !selectedUsers.some(u => u.id === profile.id)
-      );
+      const filtered = (data || [])
+        .filter(profile => !currentShares.includes(profile.user_id) && !selectedUsers.some(u => u.id === profile.user_id))
+        .map(p => ({ id: p.user_id, username: p.username, display_name: p.display_name || p.full_name }));
 
       setSearchResults(filtered);
     } catch (error: any) {
