@@ -117,12 +117,12 @@ export const FileList = ({ userId, viewType, searchQuery, refreshTrigger, sortBy
         const fileOwnerIds = [...new Set(data.map((item: any) => item.files.owner_id))];
         const { data: profiles, error: profilesError } = await supabase
           .from('profiles')
-          .select('id, username, display_name')
-          .in('id', fileOwnerIds);
+          .select('user_id, username, display_name, full_name')
+          .in('user_id', fileOwnerIds);
 
         if (profilesError) throw profilesError;
 
-        const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+        const profileMap = new Map(profiles?.map(p => [p.user_id, { username: p.username, display_name: p.display_name || p.full_name }]) || []);
         const transformedFiles = data.map((item: any) => ({
           ...item.files,
           profiles: profileMap.get(item.files.owner_id),
@@ -164,10 +164,10 @@ export const FileList = ({ userId, viewType, searchQuery, refreshTrigger, sortBy
         const fileOwnerIds = [...new Set(sharedFilesData.data.map((item: any) => item.files.owner_id))];
         const { data: profiles } = await supabase
           .from('profiles')
-          .select('id, username, display_name')
-          .in('id', fileOwnerIds);
+          .select('user_id, username, display_name, full_name')
+          .in('user_id', fileOwnerIds);
 
-        const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+        const profileMap = new Map(profiles?.map(p => [p.user_id, { username: p.username, display_name: p.display_name || p.full_name }]) || []);
         const sharedFiles = sharedFilesData.data.map((item: any) => ({
           ...item.files,
           profiles: profileMap.get(item.files.owner_id),

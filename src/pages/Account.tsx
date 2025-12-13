@@ -1,17 +1,21 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { User, Mail, AtSign, Save } from "lucide-react";
+import { User, Mail, AtSign, Save, LogOut, Trash2 } from "lucide-react";
 
 const Account = () => {
+  const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [profile, setProfile] = useState<{ full_name: string; username: string; display_name: string | null } | null>(null);
   const [formData, setFormData] = useState({ full_name: "", username: "", display_name: "" });
 
@@ -41,7 +45,7 @@ const Account = () => {
 
     setSaving(true);
     try {
-      const { data: existingUser } = await supabase.from('profiles').select('id').eq('username', formData.username).neq('user_id', user.id).single();
+      const { data: existingUser } = await supabase.from('profiles').select('user_id').eq('username', formData.username).neq('user_id', user.id).maybeSingle();
       if (existingUser) {
         toast.error("Deze gebruikersnaam is al in gebruik");
         setSaving(false);
@@ -61,6 +65,41 @@ const Account = () => {
       toast.error("Kon profiel niet bijwerken");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/auth");
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    setDeleting(true);
+    try {
+      // Delete user's files from storage and database
+      const { data: userFiles } = await supabase.from('files').select('storage_url').eq('owner_id', user.id);
+      if (userFiles && userFiles.length > 0) {
+        await supabase.storage.from('user-files').remove(userFiles.map(f => f.storage_url));
+        await supabase.from('files').delete().eq('owner_id', user.id);
+      }
+
+      // Delete folders, notifications, file shares, spotify connection, profile
+      await supabase.from('folders').delete().eq('owner_id', user.id);
+      await supabase.from('notifications').delete().eq('recipient_id', user.id);
+      await supabase.from('file_shares').delete().eq('shared_by_user_id', user.id);
+      await supabase.from('spotify_connections').delete().eq('user_id', user.id);
+      await supabase.from('profiles').delete().eq('user_id', user.id);
+
+      // Sign out (account deletion from auth.users requires admin/service role)
+      await signOut();
+      toast.success("Account verwijderd");
+      navigate("/auth");
+    } catch (error) {
+      console.error("Delete account error:", error);
+      toast.error("Kon account niet verwijderen");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -119,8 +158,34 @@ const Account = () => {
         <CardHeader>
           <CardTitle>Account Acties</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Button variant="destructive" onClick={signOut}>Uitloggen</Button>
+        <CardContent className="space-y-3">
+          <Button variant="outline" onClick={handleSignOut} className="w-full">
+            <LogOut className="w-4 h-4 mr-2" />
+            Uitloggen
+          </Button>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" className="w-full">
+                <Trash2 className="w-4 h-4 mr-2" />
+                Account Verwijderen
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Weet je het zeker?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Dit verwijdert je account permanent, inclusief al je bestanden, mappen en instellingen. Deze actie kan niet ongedaan worden gemaakt.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuleren</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteAccount} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  {deleting ? "Verwijderen..." : "Account Verwijderen"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </CardContent>
       </Card>
     </div>
