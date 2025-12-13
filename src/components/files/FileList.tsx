@@ -92,6 +92,7 @@ export const FileList = ({ userId, viewType, searchQuery, refreshTrigger, sortBy
           .select('*')
           .eq('owner_id', userId)
           .eq('is_favorite', true)
+          .is('deleted_at', null)
           .order('upload_date', { ascending: false });
       } else if (viewType === "shared") {
         const { data, error } = await supabase
@@ -138,6 +139,7 @@ export const FileList = ({ userId, viewType, searchQuery, refreshTrigger, sortBy
             .from('files')
             .select('*')
             .eq('owner_id', userId)
+            .is('deleted_at', null)
             .order('upload_date', { ascending: false }),
           supabase
             .from('file_shares')

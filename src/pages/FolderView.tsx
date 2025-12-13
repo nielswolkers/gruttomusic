@@ -87,6 +87,7 @@ const FolderView = () => {
         .from('files')
         .select('*')
         .eq('folder_id', folderId)
+        .is('deleted_at', null)
         .order('upload_date', { ascending: false });
 
       if (error) throw error;
@@ -125,7 +126,8 @@ const FolderView = () => {
         const { count } = await supabase
           .from('files')
           .select('*', { count: 'exact', head: true })
-          .eq('folder_id', subfolder.id);
+          .eq('folder_id', subfolder.id)
+          .is('deleted_at', null);
         counts[subfolder.id] = count || 0;
       }
 
