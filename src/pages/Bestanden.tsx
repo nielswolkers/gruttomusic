@@ -81,7 +81,7 @@ const Bestanden = () => {
   return (
     <div className="w-full">
       {/* Page Title */}
-      <h1 className="text-2xl font-semibold mb-6">Bestanden</h1>
+      <h1 className="text-4xl font-bold text-foreground mb-6">Bestanden</h1>
 
       <div className="mb-8 flex items-center justify-between gap-6">
         {/* Tab Navigation with sliding indicator */}

@@ -18,8 +18,8 @@ import folderRed from "@/assets/folder-red.png";
 import folderBlue from "@/assets/folder-blue.png";
 import folderGreen from "@/assets/folder-green.png";
 import folderYellow from "@/assets/folder-yellow.png";
-import folderSalmon from "@/assets/folder-salmon.png";
-import folderGray from "@/assets/folder-gray.png";
+import folderPurple from "@/assets/folder-purple.png";
+import folderDarkblue from "@/assets/folder-darkblue.png";
 
 interface FolderCardProps {
   folder: {
@@ -34,14 +34,21 @@ interface FolderCardProps {
 }
 
 const FOLDER_ICON_MAP: Record<string, string> = {
+  "#E8A54B": folderOrange,
+  "#E4B4E6": folderPink,
+  "#A8C5E8": folderBlue,
+  "#E8D347": folderYellow,
+  "#6BC497": folderGreen,
+  "#D96B5B": folderRed,
+  "#9B7DC4": folderPurple,
+  "#5B8DC4": folderDarkblue,
+  // Legacy color mappings for backwards compatibility
   "#E8C547": folderYellow,
   "#ECA869": folderOrange,
-  "#E4B4E6": folderPink,
   "#E86C6C": folderRed,
   "#7FABDB": folderBlue,
-  "#6BC497": folderGreen,
-  "#FFB6B6": folderSalmon,
-  "#9CA3AF": folderGray,
+  "#FFB6B6": folderPink,
+  "#9CA3AF": folderDarkblue,
 };
 
 export const FolderCard = ({ folder, fileCount, onUpdate }: FolderCardProps) => {
@@ -50,7 +57,7 @@ export const FolderCard = ({ folder, fileCount, onUpdate }: FolderCardProps) => 
   const [showShareDialog, setShowShareDialog] = useState(false);
 
   const getFolderIcon = (color: string) => {
-    return FOLDER_ICON_MAP[color] || folderYellow;
+    return FOLDER_ICON_MAP[color] || folderOrange;
   };
 
   const handleDelete = async (e: React.MouseEvent) => {
