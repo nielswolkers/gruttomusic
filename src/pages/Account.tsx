@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { User, Mail, LogOut, Trash2 } from "lucide-react";
-import { getStoredAccessToken, logout as spotifyLogout, refreshAccessToken } from "@/auth/spotifyAuth";
+import { getStoredAccessToken, logout as spotifyLogout, refreshAccessToken, redirectToSpotifyAuth } from "@/auth/spotifyAuth";
 import { getUserProfile } from "@/api/spotifyApi";
 
 const Account = () => {
@@ -140,6 +140,15 @@ const Account = () => {
     setSpotifyConnected(false);
     setSpotifyUser(null);
     toast.success("Spotify ontkoppeld");
+  };
+
+  const handleSpotifyConnect = async () => {
+    try {
+      await redirectToSpotifyAuth();
+    } catch (error) {
+      console.error('Failed to redirect to Spotify:', error);
+      toast.error('Kon niet verbinden met Spotify');
+    }
   };
 
   const handleDeleteAccount = async () => {
@@ -289,7 +298,7 @@ const Account = () => {
                 </Button>
               </div>
             ) : (
-              <Button variant="outline" size="sm" onClick={() => navigate('/instellingen')} className="rounded-full">
+              <Button variant="outline" size="sm" onClick={handleSpotifyConnect} className="rounded-full">
                 Verbinden
               </Button>
             )}
