@@ -4,28 +4,43 @@ import { nl } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import TaskCreateDialog from "@/components/tasks/TaskCreateDialog";
+import { cn } from "@/lib/utils";
 
 interface Task {
   id: string;
   title: string;
   description: string | null;
   due_date: string;
+  due_time: string | null;
+  priority: "high" | "regular" | "low";
   completed: boolean;
   completed_at: string | null;
   created_at: string;
+  add_to_calendar: boolean;
 }
+
+const priorityColors = {
+  high: "bg-red-100 border-red-300",
+  regular: "bg-orange-100 border-orange-300",
+  low: "bg-gray-100 border-gray-300",
+};
+
+const priorityDotColors = {
+  high: "bg-red-400",
+  regular: "bg-orange-400",
+  low: "bg-gray-400",
+};
 
 const Taken = () => {
   const { user } = useAuth();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [isAdding, setIsAdding] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -52,7 +67,7 @@ const Taken = () => {
           .order("created_at", { ascending: true });
 
         if (error) throw error;
-        setTasks(data || []);
+        setTasks((data as Task[]) || []);
       } else {
         // For other dates, only show tasks for that specific day
         const { data, error } = await supabase
@@ -63,7 +78,7 @@ const Taken = () => {
           .order("created_at", { ascending: true });
 
         if (error) throw error;
-        setTasks(data || []);
+        setTasks((data as Task[]) || []);
       }
     } catch (error) {
       console.error("Failed to load tasks:", error);
@@ -73,20 +88,29 @@ const Taken = () => {
     }
   };
 
-  const handleAddTask = async () => {
-    if (!user || !newTaskTitle.trim()) return;
+  const handleCreateTask = async (taskData: {
+    title: string;
+    description: string;
+    priority: "high" | "regular" | "low";
+    dueDate: Date;
+    dueTime: string | null;
+    addToCalendar: boolean;
+  }) => {
+    if (!user) return;
 
     try {
       const { error } = await supabase.from("tasks").insert({
         user_id: user.id,
-        title: newTaskTitle.trim(),
-        due_date: format(selectedDate, "yyyy-MM-dd"),
+        title: taskData.title,
+        description: taskData.description || null,
+        priority: taskData.priority,
+        due_date: format(taskData.dueDate, "yyyy-MM-dd"),
+        due_time: taskData.dueTime || null,
+        add_to_calendar: taskData.addToCalendar,
       });
 
       if (error) throw error;
 
-      setNewTaskTitle("");
-      setIsAdding(false);
       toast.success("Taak toegevoegd");
       loadTasks();
     } catch (error) {
@@ -154,10 +178,16 @@ const Taken = () => {
     return isBefore(taskDate, startOfDay(new Date())) && !task.completed;
   };
 
+  const formatTime = (time: string | null) => {
+    if (!time) return null;
+    const [hours, minutes] = time.split(":");
+    return `${hours}:${minutes}`;
+  };
+
   if (!user) return null;
 
   return (
-    <div className="w-full max-w-2xl">
+    <div className="w-full">
       {/* Header with navigation */}
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-4xl font-bold text-foreground capitalize">
@@ -201,12 +231,12 @@ const Taken = () => {
       )}
 
       {/* Tasks list */}
-      <div className="space-y-3 mb-6">
+      <div className="space-y-3 mb-6 max-w-2xl">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
-        ) : tasks.length === 0 && !isAdding ? (
+        ) : tasks.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground mb-4">Geen taken voor deze dag</p>
           </div>
@@ -214,13 +244,14 @@ const Taken = () => {
           tasks.map((task) => (
             <div
               key={task.id}
-              className={`group flex items-center gap-4 p-4 rounded-2xl border transition-all ${
+              className={cn(
+                "group flex items-center gap-4 p-4 rounded-2xl border-2 transition-all",
                 task.completed
                   ? "bg-muted/30 border-border/50"
                   : isOverdue(task)
                   ? "bg-destructive/5 border-destructive/20"
-                  : "bg-card border-border hover:border-primary/30"
-              }`}
+                  : priorityColors[task.priority]
+              )}
             >
               <Checkbox
                 checked={task.completed}
@@ -228,22 +259,40 @@ const Taken = () => {
                 className="h-5 w-5 rounded-full border-2"
               />
               <div className="flex-1 min-w-0">
-                <p
-                  className={`font-medium ${
-                    task.completed
-                      ? "line-through text-muted-foreground"
-                      : isOverdue(task)
-                      ? "text-destructive"
-                      : "text-foreground"
-                  }`}
-                >
-                  {task.title}
-                </p>
-                {isOverdue(task) && (
-                  <p className="text-xs text-destructive mt-1">
-                    Verlopen: {format(new Date(task.due_date), "d MMM", { locale: nl })}
+                <div className="flex items-center gap-2">
+                  {!task.completed && (
+                    <div className={cn("w-2 h-2 rounded-full", priorityDotColors[task.priority])} />
+                  )}
+                  <p
+                    className={cn(
+                      "font-medium",
+                      task.completed
+                        ? "line-through text-muted-foreground"
+                        : isOverdue(task)
+                        ? "text-destructive"
+                        : "text-foreground"
+                    )}
+                  >
+                    {task.title}
+                  </p>
+                </div>
+                {task.description && !task.completed && (
+                  <p className="text-sm text-muted-foreground mt-1 truncate">
+                    {task.description}
                   </p>
                 )}
+                <div className="flex items-center gap-3 mt-1">
+                  {task.due_time && (
+                    <span className="text-xs text-muted-foreground">
+                      {formatTime(task.due_time)}
+                    </span>
+                  )}
+                  {isOverdue(task) && (
+                    <span className="text-xs text-destructive">
+                      Verlopen: {format(new Date(task.due_date), "d MMM", { locale: nl })}
+                    </span>
+                  )}
+                </div>
               </div>
               <Button
                 variant="ghost"
@@ -257,55 +306,23 @@ const Taken = () => {
           ))
         )}
 
-        {/* Add task input */}
-        {isAdding ? (
-          <div className="flex items-center gap-3 p-4 rounded-2xl border border-primary bg-card">
-            <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" />
-            <Input
-              value={newTaskTitle}
-              onChange={(e) => setNewTaskTitle(e.target.value)}
-              placeholder="Nieuwe taak..."
-              className="flex-1 border-0 bg-transparent p-0 h-auto text-base focus-visible:ring-0"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleAddTask();
-                if (e.key === "Escape") {
-                  setIsAdding(false);
-                  setNewTaskTitle("");
-                }
-              }}
-            />
-            <Button
-              size="sm"
-              className="rounded-full"
-              onClick={handleAddTask}
-              disabled={!newTaskTitle.trim()}
-            >
-              Toevoegen
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="rounded-full"
-              onClick={() => {
-                setIsAdding(false);
-                setNewTaskTitle("");
-              }}
-            >
-              Annuleren
-            </Button>
-          </div>
-        ) : (
-          <Button
-            variant="outline"
-            className="w-full rounded-2xl h-14 border-dashed justify-start gap-3 text-muted-foreground hover:text-foreground"
-            onClick={() => setIsAdding(true)}
-          >
-            <Plus className="w-5 h-5" />
-            Nieuwe taak toevoegen
-          </Button>
-        )}
+        {/* Add task button */}
+        <Button
+          variant="outline"
+          className="w-full rounded-2xl h-14 border-dashed justify-start gap-3 text-muted-foreground hover:text-foreground"
+          onClick={() => setIsDialogOpen(true)}
+        >
+          <Plus className="w-5 h-5" />
+          Nieuwe taak toevoegen
+        </Button>
       </div>
+
+      <TaskCreateDialog
+        open={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+        onCreateTask={handleCreateTask}
+        initialDate={selectedDate}
+      />
     </div>
   );
 };

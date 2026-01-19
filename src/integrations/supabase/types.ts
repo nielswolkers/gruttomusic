@@ -252,34 +252,43 @@ export type Database = {
       }
       tasks: {
         Row: {
+          add_to_calendar: boolean | null
           completed: boolean
           completed_at: string | null
           created_at: string
           description: string | null
           due_date: string
+          due_time: string | null
           id: string
+          priority: string
           title: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          add_to_calendar?: boolean | null
           completed?: boolean
           completed_at?: string | null
           created_at?: string
           description?: string | null
           due_date: string
+          due_time?: string | null
           id?: string
+          priority?: string
           title: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          add_to_calendar?: boolean | null
           completed?: boolean
           completed_at?: string | null
           created_at?: string
           description?: string | null
           due_date?: string
+          due_time?: string | null
           id?: string
+          priority?: string
           title?: string
           updated_at?: string
           user_id?: string
