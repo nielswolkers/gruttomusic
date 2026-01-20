@@ -261,6 +261,9 @@ export type Database = {
           due_time: string | null
           id: string
           priority: string
+          repeat_end_date: string | null
+          repeat_interval: number | null
+          repeat_type: string | null
           title: string
           updated_at: string
           user_id: string
@@ -275,6 +278,9 @@ export type Database = {
           due_time?: string | null
           id?: string
           priority?: string
+          repeat_end_date?: string | null
+          repeat_interval?: number | null
+          repeat_type?: string | null
           title: string
           updated_at?: string
           user_id: string
@@ -289,6 +295,9 @@ export type Database = {
           due_time?: string | null
           id?: string
           priority?: string
+          repeat_end_date?: string | null
+          repeat_interval?: number | null
+          repeat_type?: string | null
           title?: string
           updated_at?: string
           user_id?: string

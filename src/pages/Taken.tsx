@@ -5,10 +5,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Repeat } from "lucide-react";
 import { toast } from "sonner";
 import TaskCreateDialog from "@/components/tasks/TaskCreateDialog";
+import TaskViewDialog from "@/components/tasks/TaskViewDialog";
 import { cn } from "@/lib/utils";
+
+type RepeatType = "daily" | "weekly" | "monthly" | "yearly" | null;
 
 interface Task {
   id: string;
@@ -21,18 +24,14 @@ interface Task {
   completed_at: string | null;
   created_at: string;
   add_to_calendar: boolean;
+  repeat_type: RepeatType;
+  repeat_interval: number;
+  repeat_end_date: string | null;
 }
 
-const priorityColors = {
-  high: "bg-red-100 border-red-300",
-  regular: "bg-orange-100 border-orange-300",
-  low: "bg-gray-100 border-gray-300",
-};
-
-const priorityDotColors = {
-  high: "bg-red-400",
-  regular: "bg-orange-400",
-  low: "bg-gray-400",
+const priorityPillColors = {
+  high: "bg-red-100 text-red-700 border-red-200",
+  low: "bg-gray-100 text-gray-600 border-gray-200",
 };
 
 const Taken = () => {
@@ -41,6 +40,8 @@ const Taken = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -95,6 +96,9 @@ const Taken = () => {
     dueDate: Date;
     dueTime: string | null;
     addToCalendar: boolean;
+    repeatType: RepeatType;
+    repeatInterval: number;
+    repeatEndDate: Date | null;
   }) => {
     if (!user) return;
 
@@ -107,6 +111,9 @@ const Taken = () => {
         due_date: format(taskData.dueDate, "yyyy-MM-dd"),
         due_time: taskData.dueTime || null,
         add_to_calendar: taskData.addToCalendar,
+        repeat_type: taskData.repeatType,
+        repeat_interval: taskData.repeatInterval,
+        repeat_end_date: taskData.repeatEndDate ? format(taskData.repeatEndDate, "yyyy-MM-dd") : null,
       });
 
       if (error) throw error;
@@ -119,7 +126,37 @@ const Taken = () => {
     }
   };
 
-  const handleToggleComplete = async (task: Task) => {
+  const handleUpdateTask = async (task: Task) => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .update({
+          title: task.title,
+          description: task.description,
+          priority: task.priority,
+          due_date: task.due_date,
+          due_time: task.due_time,
+          add_to_calendar: task.add_to_calendar,
+          repeat_type: task.repeat_type,
+          repeat_interval: task.repeat_interval,
+          repeat_end_date: task.repeat_end_date,
+        })
+        .eq("id", task.id);
+
+      if (error) throw error;
+
+      toast.success("Taak bijgewerkt");
+      loadTasks();
+    } catch (error) {
+      console.error("Failed to update task:", error);
+      toast.error("Kon taak niet bijwerken");
+    }
+  };
+
+  const handleToggleComplete = async (task: Task, e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!user) return;
 
     try {
@@ -152,6 +189,11 @@ const Taken = () => {
       console.error("Failed to delete task:", error);
       toast.error("Kon taak niet verwijderen");
     }
+  };
+
+  const handleTaskClick = (task: Task) => {
+    setSelectedTask(task);
+    setIsViewDialogOpen(true);
   };
 
   const goToPreviousDay = () => {
@@ -231,7 +273,7 @@ const Taken = () => {
       )}
 
       {/* Tasks list */}
-      <div className="space-y-3 mb-6 max-w-2xl">
+      <div className="space-y-3 mb-6">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -244,25 +286,24 @@ const Taken = () => {
           tasks.map((task) => (
             <div
               key={task.id}
+              onClick={() => handleTaskClick(task)}
               className={cn(
-                "group flex items-center gap-4 p-4 rounded-2xl border-2 transition-all",
+                "group flex items-center gap-4 p-4 rounded-2xl border bg-card transition-all cursor-pointer hover:shadow-sm",
                 task.completed
-                  ? "bg-muted/30 border-border/50"
+                  ? "border-border/50 opacity-60"
                   : isOverdue(task)
-                  ? "bg-destructive/5 border-destructive/20"
-                  : priorityColors[task.priority]
+                  ? "border-destructive/30"
+                  : "border-border"
               )}
             >
               <Checkbox
                 checked={task.completed}
-                onCheckedChange={() => handleToggleComplete(task)}
+                onCheckedChange={() => {}}
+                onClick={(e) => handleToggleComplete(task, e)}
                 className="h-5 w-5 rounded-full border-2"
               />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  {!task.completed && (
-                    <div className={cn("w-2 h-2 rounded-full", priorityDotColors[task.priority])} />
-                  )}
+                <div className="flex items-center gap-2 flex-wrap">
                   <p
                     className={cn(
                       "font-medium",
@@ -275,6 +316,17 @@ const Taken = () => {
                   >
                     {task.title}
                   </p>
+                  {!task.completed && task.priority !== "regular" && (
+                    <span className={cn(
+                      "text-xs font-medium px-2 py-0.5 rounded-full border",
+                      priorityPillColors[task.priority]
+                    )}>
+                      {task.priority === "high" ? "Hoog" : "Laag"}
+                    </span>
+                  )}
+                  {task.repeat_type && (
+                    <Repeat className="w-3.5 h-3.5 text-muted-foreground" />
+                  )}
                 </div>
                 {task.description && !task.completed && (
                   <p className="text-sm text-muted-foreground mt-1 truncate">
@@ -294,14 +346,6 @@ const Taken = () => {
                   )}
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 text-muted-foreground hover:text-destructive"
-                onClick={() => handleDeleteTask(task.id)}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
             </div>
           ))
         )}
@@ -322,6 +366,14 @@ const Taken = () => {
         onOpenChange={setIsDialogOpen}
         onCreateTask={handleCreateTask}
         initialDate={selectedDate}
+      />
+
+      <TaskViewDialog
+        open={isViewDialogOpen}
+        onOpenChange={setIsViewDialogOpen}
+        task={selectedTask}
+        onUpdateTask={handleUpdateTask}
+        onDeleteTask={handleDeleteTask}
       />
     </div>
   );

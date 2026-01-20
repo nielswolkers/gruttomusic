@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { FileText, FileIcon, Undo2, Trash2 } from "lucide-react";
+import { FileIcon, Undo2, Trash2, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { formatRelativeDate } from "@/lib/dateUtils";
 import { useAuth } from "@/hooks/useAuth";
@@ -126,17 +126,19 @@ const Meldingen = () => {
   if (!user) return null;
 
   return (
-    <div className="w-full max-w-4xl">
+    <div className="w-full">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-4xl font-bold text-foreground">Meldingen</h1>
-        <Button 
-          size="sm" 
-          variant="secondary" 
-          onClick={markAllAsRead}
-          className="rounded-full px-4 h-9 bg-muted hover:bg-muted/80"
-        >
-          Wis alles
-        </Button>
+        {notifications.length > 0 && (
+          <Button 
+            size="sm" 
+            variant="secondary" 
+            onClick={markAllAsRead}
+            className="rounded-full px-4 h-9 bg-muted hover:bg-muted/80"
+          >
+            Wis alles
+          </Button>
+        )}
       </div>
 
       {loading && (
@@ -147,7 +149,7 @@ const Meldingen = () => {
 
       {!loading && notifications.length === 0 && (
         <div className="text-center py-12">
-          <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+          <Bell className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
           <p className="text-muted-foreground">Geen meldingen</p>
         </div>
       )}

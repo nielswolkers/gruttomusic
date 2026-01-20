@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -25,27 +25,34 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CalendarIcon, Clock, CalendarPlus, Repeat } from "lucide-react";
+import { CalendarIcon, Clock, CalendarPlus, Repeat, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 
 type Priority = "high" | "regular" | "low";
 type RepeatType = "daily" | "weekly" | "monthly" | "yearly" | null;
 
-interface TaskCreateDialogProps {
+interface Task {
+  id: string;
+  title: string;
+  description: string | null;
+  due_date: string;
+  due_time: string | null;
+  priority: Priority;
+  completed: boolean;
+  completed_at: string | null;
+  created_at: string;
+  add_to_calendar: boolean;
+  repeat_type: RepeatType;
+  repeat_interval: number;
+  repeat_end_date: string | null;
+}
+
+interface TaskViewDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreateTask: (task: {
-    title: string;
-    description: string;
-    priority: Priority;
-    dueDate: Date;
-    dueTime: string | null;
-    addToCalendar: boolean;
-    repeatType: RepeatType;
-    repeatInterval: number;
-    repeatEndDate: Date | null;
-  }) => void;
-  initialDate: Date;
+  task: Task | null;
+  onUpdateTask: (task: Task) => void;
+  onDeleteTask: (taskId: string) => void;
 }
 
 const priorityOptions: { value: Priority; label: string; color: string; bgColor: string }[] = [
@@ -62,82 +69,83 @@ const repeatOptions: { value: RepeatType; label: string }[] = [
   { value: "yearly", label: "Jaarlijks" },
 ];
 
-const TaskCreateDialog = ({ open, onOpenChange, onCreateTask, initialDate }: TaskCreateDialogProps) => {
+const TaskViewDialog = ({ open, onOpenChange, task, onUpdateTask, onDeleteTask }: TaskViewDialogProps) => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<Priority>("regular");
-  const [dueDate, setDueDate] = useState<Date>(initialDate);
+  const [dueDate, setDueDate] = useState<Date>(new Date());
   const [dueTime, setDueTime] = useState<string>("");
   const [addToCalendar, setAddToCalendar] = useState(false);
   const [repeatType, setRepeatType] = useState<RepeatType>(null);
   const [repeatInterval, setRepeatInterval] = useState(1);
   const [repeatEndDate, setRepeatEndDate] = useState<Date | null>(null);
 
-  const handleSubmit = () => {
-    if (!title.trim()) return;
+  useEffect(() => {
+    if (task) {
+      setTitle(task.title);
+      setDescription(task.description || "");
+      setPriority(task.priority);
+      setDueDate(new Date(task.due_date));
+      setDueTime(task.due_time || "");
+      setAddToCalendar(task.add_to_calendar);
+      setRepeatType(task.repeat_type);
+      setRepeatInterval(task.repeat_interval || 1);
+      setRepeatEndDate(task.repeat_end_date ? new Date(task.repeat_end_date) : null);
+    }
+  }, [task]);
 
-    onCreateTask({
+  const handleSave = () => {
+    if (!task || !title.trim()) return;
+
+    onUpdateTask({
+      ...task,
       title: title.trim(),
-      description: description.trim(),
+      description: description.trim() || null,
       priority,
-      dueDate,
-      dueTime: dueTime || null,
-      addToCalendar,
-      repeatType,
-      repeatInterval,
-      repeatEndDate,
+      due_date: format(dueDate, "yyyy-MM-dd"),
+      due_time: dueTime || null,
+      add_to_calendar: addToCalendar,
+      repeat_type: repeatType,
+      repeat_interval: repeatInterval,
+      repeat_end_date: repeatEndDate ? format(repeatEndDate, "yyyy-MM-dd") : null,
     });
 
-    // Reset form
-    setTitle("");
-    setDescription("");
-    setPriority("regular");
-    setDueTime("");
-    setAddToCalendar(false);
-    setRepeatType(null);
-    setRepeatInterval(1);
-    setRepeatEndDate(null);
     onOpenChange(false);
   };
 
-  const handleClose = () => {
-    setTitle("");
-    setDescription("");
-    setPriority("regular");
-    setDueTime("");
-    setAddToCalendar(false);
-    setRepeatType(null);
-    setRepeatInterval(1);
-    setRepeatEndDate(null);
+  const handleDelete = () => {
+    if (!task) return;
+    onDeleteTask(task.id);
     onOpenChange(false);
   };
+
+  if (!task) return null;
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px] rounded-2xl">
         <DialogHeader>
-          <DialogTitle className="text-xl font-semibold">Nieuwe taak</DialogTitle>
+          <DialogTitle className="text-xl font-semibold">Taak bewerken</DialogTitle>
         </DialogHeader>
         
         <div className="space-y-5 pt-2">
           {/* Title */}
           <div className="space-y-2">
-            <Label htmlFor="task-title">Titel</Label>
+            <Label htmlFor="view-task-title">Titel</Label>
             <Input
-              id="task-title"
+              id="view-task-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Wat moet er gebeuren?"
               className="rounded-xl"
-              autoFocus
             />
           </div>
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="task-description">Beschrijving (optioneel)</Label>
+            <Label htmlFor="view-task-description">Beschrijving (optioneel)</Label>
             <Textarea
-              id="task-description"
+              id="view-task-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Voeg details toe..."
@@ -291,14 +299,14 @@ const TaskCreateDialog = ({ open, onOpenChange, onCreateTask, initialDate }: Tas
           {/* Add to Calendar */}
           <div className="flex items-center gap-3 p-3 rounded-xl bg-secondary/50">
             <Checkbox
-              id="add-calendar"
+              id="view-add-calendar"
               checked={addToCalendar}
               onCheckedChange={(checked) => setAddToCalendar(checked === true)}
               className="h-5 w-5 rounded"
             />
             <div className="flex items-center gap-2 flex-1">
               <CalendarPlus className="h-4 w-4 text-muted-foreground" />
-              <Label htmlFor="add-calendar" className="text-sm font-normal cursor-pointer">
+              <Label htmlFor="view-add-calendar" className="text-sm font-normal cursor-pointer">
                 Toevoegen aan agenda
               </Label>
             </div>
@@ -308,17 +316,24 @@ const TaskCreateDialog = ({ open, onOpenChange, onCreateTask, initialDate }: Tas
           <div className="flex gap-3 pt-2">
             <Button
               variant="outline"
-              onClick={handleClose}
+              onClick={handleDelete}
+              className="rounded-xl text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10"
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
               className="flex-1 rounded-xl"
             >
               Annuleren
             </Button>
             <Button
-              onClick={handleSubmit}
+              onClick={handleSave}
               disabled={!title.trim()}
               className="flex-1 rounded-xl"
             >
-              Toevoegen
+              Opslaan
             </Button>
           </div>
         </div>
@@ -327,4 +342,4 @@ const TaskCreateDialog = ({ open, onOpenChange, onCreateTask, initialDate }: Tas
   );
 };
 
-export default TaskCreateDialog;
+export default TaskViewDialog;
