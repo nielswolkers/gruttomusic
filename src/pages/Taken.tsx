@@ -265,12 +265,6 @@ const Taken = () => {
         </div>
       </div>
 
-      {/* Date subtitle */}
-      {isToday(selectedDate) && (
-        <p className="text-muted-foreground mb-6">
-          {format(selectedDate, "EEEE d MMMM yyyy", { locale: nl })}
-        </p>
-      )}
 
       {/* Tasks list */}
       <div className="space-y-3 mb-6">
