@@ -45,6 +45,8 @@ interface Task {
   repeat_type: RepeatType;
   repeat_interval: number;
   repeat_end_date: string | null;
+  isRepeatInstance?: boolean;
+  originalTaskId?: string;
 }
 
 interface TaskViewDialogProps {
