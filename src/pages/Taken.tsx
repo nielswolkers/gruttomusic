@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { format, addDays, subDays, isToday, isBefore, startOfDay } from "date-fns";
+import { format, addDays, subDays, isToday, isBefore, startOfDay, addWeeks, addMonths, addYears, differenceInDays, differenceInWeeks, differenceInMonths, differenceInYears, isAfter, isSameDay } from "date-fns";
 import { nl } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -29,18 +29,76 @@ interface Task {
   repeat_end_date: string | null;
 }
 
+interface DisplayTask extends Task {
+  isRepeatInstance?: boolean;
+  originalTaskId?: string;
+}
+
 const priorityPillColors = {
   high: "bg-red-100 text-red-700 border-red-200",
   low: "bg-gray-100 text-gray-600 border-gray-200",
 };
 
+// Check if a repeating task should appear on a specific date
+const shouldRepeatOnDate = (task: Task, targetDate: Date): boolean => {
+  if (!task.repeat_type) return false;
+  
+  const taskStartDate = startOfDay(new Date(task.due_date));
+  const target = startOfDay(targetDate);
+  
+  // Task can't repeat before its start date
+  if (isBefore(target, taskStartDate)) return false;
+  
+  // Check end date
+  if (task.repeat_end_date && isAfter(target, new Date(task.repeat_end_date))) {
+    return false;
+  }
+  
+  // If it's the same day as start, it's handled by the regular query
+  if (isSameDay(target, taskStartDate)) return false;
+  
+  const interval = task.repeat_interval || 1;
+  
+  switch (task.repeat_type) {
+    case "daily": {
+      const daysDiff = differenceInDays(target, taskStartDate);
+      return daysDiff > 0 && daysDiff % interval === 0;
+    }
+    case "weekly": {
+      const weeksDiff = differenceInWeeks(target, taskStartDate);
+      // Check if it's on the right week and same day of week
+      if (weeksDiff > 0 && weeksDiff % interval === 0) {
+        return target.getDay() === taskStartDate.getDay();
+      }
+      return false;
+    }
+    case "monthly": {
+      const monthsDiff = differenceInMonths(target, taskStartDate);
+      if (monthsDiff > 0 && monthsDiff % interval === 0) {
+        return target.getDate() === taskStartDate.getDate();
+      }
+      return false;
+    }
+    case "yearly": {
+      const yearsDiff = differenceInYears(target, taskStartDate);
+      if (yearsDiff > 0 && yearsDiff % interval === 0) {
+        return target.getDate() === taskStartDate.getDate() && 
+               target.getMonth() === taskStartDate.getMonth();
+      }
+      return false;
+    }
+    default:
+      return false;
+  }
+};
+
 const Taken = () => {
   const { user } = useAuth();
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<DisplayTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedTask, setSelectedTask] = useState<DisplayTask | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -57,30 +115,64 @@ const Taken = () => {
       const dateStr = format(selectedDate, "yyyy-MM-dd");
       const today = format(new Date(), "yyyy-MM-dd");
 
-      // If viewing today, also get incomplete tasks from previous days
+      // Fetch all user tasks to check for repeating ones
+      const { data: allTasks, error: allError } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true });
+
+      if (allError) throw allError;
+
+      const allTasksTyped = (allTasks as Task[]) || [];
+      let displayTasks: DisplayTask[] = [];
+
+      // Get tasks that are due on the selected date
+      const tasksForDate = allTasksTyped.filter(t => t.due_date === dateStr);
+      displayTasks.push(...tasksForDate);
+
+      // If viewing today, add incomplete tasks from previous days (rollover)
       if (dateStr === today) {
-        const { data, error } = await supabase
-          .from("tasks")
-          .select("*")
-          .eq("user_id", user.id)
-          .or(`due_date.eq.${dateStr},and(due_date.lt.${dateStr},completed.eq.false)`)
-          .order("due_date", { ascending: true })
-          .order("created_at", { ascending: true });
-
-        if (error) throw error;
-        setTasks((data as Task[]) || []);
-      } else {
-        // For other dates, only show tasks for that specific day
-        const { data, error } = await supabase
-          .from("tasks")
-          .select("*")
-          .eq("user_id", user.id)
-          .eq("due_date", dateStr)
-          .order("created_at", { ascending: true });
-
-        if (error) throw error;
-        setTasks((data as Task[]) || []);
+        const overdueTasks = allTasksTyped.filter(
+          t => t.due_date < dateStr && !t.completed && !t.repeat_type
+        );
+        displayTasks.push(...overdueTasks);
       }
+
+      // Check for repeating tasks that should appear on this date
+      const repeatingTasks = allTasksTyped.filter(t => t.repeat_type && !t.completed);
+      for (const task of repeatingTasks) {
+        if (shouldRepeatOnDate(task, selectedDate)) {
+          // Check if there's already a task instance for this date
+          const existingInstance = allTasksTyped.find(
+            t => t.title === task.title && t.due_date === dateStr && t.id !== task.id
+          );
+          
+          if (!existingInstance) {
+            // Add as a repeat instance
+            displayTasks.push({
+              ...task,
+              due_date: dateStr,
+              completed: false,
+              completed_at: null,
+              isRepeatInstance: true,
+              originalTaskId: task.id,
+            });
+          }
+        }
+      }
+
+      // Sort by time, then by created_at
+      displayTasks.sort((a, b) => {
+        if (a.due_time && b.due_time) {
+          return a.due_time.localeCompare(b.due_time);
+        }
+        if (a.due_time) return -1;
+        if (b.due_time) return 1;
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
+
+      setTasks(displayTasks);
     } catch (error) {
       console.error("Failed to load tasks:", error);
       toast.error("Kon taken niet laden");
@@ -155,20 +247,42 @@ const Taken = () => {
     }
   };
 
-  const handleToggleComplete = async (task: Task, e: React.MouseEvent) => {
+  const handleToggleComplete = async (task: DisplayTask, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!user) return;
 
     try {
-      const { error } = await supabase
-        .from("tasks")
-        .update({
-          completed: !task.completed,
-          completed_at: !task.completed ? new Date().toISOString() : null,
-        })
-        .eq("id", task.id);
+      // If this is a repeat instance, create a new completed task for this date
+      if (task.isRepeatInstance && task.originalTaskId) {
+        const { error } = await supabase.from("tasks").insert({
+          user_id: user.id,
+          title: task.title,
+          description: task.description,
+          priority: task.priority,
+          due_date: task.due_date,
+          due_time: task.due_time,
+          add_to_calendar: task.add_to_calendar,
+          repeat_type: null, // Instance doesn't repeat
+          repeat_interval: 1,
+          repeat_end_date: null,
+          completed: true,
+          completed_at: new Date().toISOString(),
+        });
 
-      if (error) throw error;
+        if (error) throw error;
+      } else {
+        // Regular task - toggle completion
+        const { error } = await supabase
+          .from("tasks")
+          .update({
+            completed: !task.completed,
+            completed_at: !task.completed ? new Date().toISOString() : null,
+          })
+          .eq("id", task.id);
+
+        if (error) throw error;
+      }
+      
       loadTasks();
     } catch (error) {
       console.error("Failed to update task:", error);
@@ -191,7 +305,8 @@ const Taken = () => {
     }
   };
 
-  const handleTaskClick = (task: Task) => {
+  const handleTaskClick = (task: DisplayTask) => {
+    // For repeat instances, we need to handle them differently in the view dialog
     setSelectedTask(task);
     setIsViewDialogOpen(true);
   };
