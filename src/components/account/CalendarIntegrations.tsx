@@ -4,9 +4,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Calendar, Link, Trash2 } from "lucide-react";
+import { Link } from "lucide-react";
+import zermeloLogo from "@/assets/zermelo-logo.svg";
+import outlookLogo from "@/assets/outlook-logo.svg";
 
 interface CalendarConnection {
   id: string;
@@ -132,8 +134,8 @@ const CalendarIntegrations = () => {
       {/* Zermelo */}
       <div className="flex items-center justify-between p-4 bg-secondary/30 rounded-xl">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-[#3B82F6]/10 flex items-center justify-center">
-            <Calendar className="w-5 h-5 text-[#3B82F6]" />
+          <div className="w-10 h-10 rounded-full overflow-hidden bg-white flex items-center justify-center">
+            <img src={zermeloLogo} alt="Zermelo" className="w-8 h-8 object-contain" />
           </div>
           <div>
             <p className="font-medium">Zermelo</p>
@@ -175,8 +177,8 @@ const CalendarIntegrations = () => {
       {/* Outlook */}
       <div className="flex items-center justify-between p-4 bg-secondary/30 rounded-xl">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-[#8B5CF6]/10 flex items-center justify-center">
-            <Calendar className="w-5 h-5 text-[#8B5CF6]" />
+          <div className="w-10 h-10 rounded-full overflow-hidden bg-white flex items-center justify-center">
+            <img src={outlookLogo} alt="Outlook" className="w-8 h-8 object-contain" />
           </div>
           <div>
             <p className="font-medium">Outlook</p>

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="zermeloGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF6B4A"/>
+      <stop offset="100%" style="stop-color:#DC2742"/>
+    </linearGradient>
+  </defs>
+  <!-- Top semicircle -->
+  <path d="M25 35 A25 25 0 0 1 75 35" fill="#FF6B4A" stroke="none"/>
+  <!-- Bottom semicircle -->
+  <path d="M25 65 A25 25 0 0 0 75 65" fill="#FF6B4A" stroke="none"/>
+  <!-- Left curved shape -->
+  <path d="M15 25 Q10 50 25 75 Q20 65 22 50 Q20 35 25 25 Q20 25 15 25" fill="#DC2742"/>
+  <!-- Right curved shape -->
+  <path d="M85 75 Q90 50 75 25 Q80 35 78 50 Q80 65 75 75 Q80 75 85 75" fill="#DC2742"/>
+  <!-- Center Z-like curves -->
+  <path d="M30 30 Q45 45 35 60 Q50 50 65 35 Q80 20 85 25" fill="none" stroke="#FFF5F5" stroke-width="4" stroke-linecap="round"/>
+</svg>
