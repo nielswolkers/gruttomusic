@@ -13,6 +13,7 @@ import FilePreview from "./pages/FilePreview";
 import Meldingen from "./pages/Meldingen";
 import Account from "./pages/Account";
 import Taken from "./pages/Taken";
+import Agenda from "./pages/Agenda";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import Callback from "./pages/Callback";
 import NotFound from "./pages/NotFound";
@@ -51,7 +52,7 @@ function AppRoutes() {
         </ProtectedRoute>
       }>
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/agenda" element={<PlaceholderPage />} />
+        <Route path="/agenda" element={<Agenda />} />
         <Route path="/studie" element={<PlaceholderPage />} />
         <Route path="/cijfers" element={<PlaceholderPage />} />
         <Route path="/taken" element={<Taken />} />

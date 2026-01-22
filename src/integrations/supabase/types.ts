@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      calendar_connections: {
+        Row: {
+          connected_at: string
+          display_name: string | null
+          ics_url: string
+          id: string
+          provider: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          connected_at?: string
+          display_name?: string | null
+          ics_url: string
+          id?: string
+          provider: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          connected_at?: string
+          display_name?: string | null
+          ics_url?: string
+          id?: string
+          provider?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       file_shares: {
         Row: {
           file_id: string

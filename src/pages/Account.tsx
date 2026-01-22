@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { User, Mail, LogOut, Trash2 } from "lucide-react";
 import { getStoredAccessToken, logout as spotifyLogout, refreshAccessToken, redirectToSpotifyAuth } from "@/auth/spotifyAuth";
 import { getUserProfile } from "@/api/spotifyApi";
+import CalendarIntegrations from "@/components/account/CalendarIntegrations";
 
 const Account = () => {
   const navigate = useNavigate();
@@ -271,7 +272,8 @@ const Account = () => {
         <CardHeader className="pb-4">
           <CardTitle className="text-xl font-semibold">Integraties</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {/* Spotify */}
           <div className="flex items-center justify-between p-4 bg-secondary/30 rounded-xl">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-[#1DB954]/10 flex items-center justify-center">
@@ -303,6 +305,9 @@ const Account = () => {
               </Button>
             )}
           </div>
+
+          {/* Calendar Integrations */}
+          <CalendarIntegrations />
         </CardContent>
       </Card>
 

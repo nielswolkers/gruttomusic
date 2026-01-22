@@ -36,6 +36,15 @@ export default function Callback() {
         const { data: { user } } = await supabase.auth.getUser();
         
         if (user) {
+          // Check if this is a first-time connection
+          const { data: existingConnection } = await supabase
+            .from('spotify_connections')
+            .select('id')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          const isFirstConnection = !existingConnection;
+
           // Get Spotify profile
           const spotifyProfile = await getUserProfile(tokenData.access_token);
           
@@ -56,6 +65,16 @@ export default function Callback() {
 
           if (upsertError) {
             console.error('Error saving Spotify connection:', upsertError);
+          }
+
+          // Create notification on first connection
+          if (isFirstConnection) {
+            await supabase.from('notifications').insert({
+              recipient_id: user.id,
+              sender_id: user.id,
+              type: 'spotify_connected',
+              message: `Spotify account "${spotifyProfile.display_name}" is succesvol gekoppeld`,
+            });
           }
         }
         
