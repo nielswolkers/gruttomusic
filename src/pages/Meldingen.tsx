@@ -32,8 +32,23 @@ const Meldingen = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user) loadNotifications();
+    if (user) {
+      loadNotifications();
+      // Mark all notifications as read when page opens
+      markAllAsReadOnOpen();
+    }
   }, [user]);
+
+  const markAllAsReadOnOpen = async () => {
+    if (!user) return;
+    
+    // Update all unread notifications to read
+    await supabase
+      .from('notifications')
+      .update({ read_status: true })
+      .eq('recipient_id', user.id)
+      .eq('read_status', false);
+  };
 
   const loadNotifications = async () => {
     if (!user) return;
@@ -50,11 +65,9 @@ const Meldingen = () => {
       const senderIds = [...new Set(notifData?.map(n => n.sender_id) || [])];
       const { data: profiles } = await supabase.from('profiles').select('user_id, username, display_name, full_name').in('user_id', senderIds);
 
-      // Get files including deleted ones for recovery notifications
       const fileIds = [...new Set(notifData?.filter(n => n.file_id).map(n => n.file_id!) || [])];
       let fileMap = new Map();
       if (fileIds.length > 0) {
-        // Query files table directly without RLS restriction on deleted_at
         const { data: files } = await supabase
           .from('files')
           .select('id, filename, file_size, deleted_at')
@@ -117,7 +130,6 @@ const Meldingen = () => {
   };
 
   const handleFileClick = (notification: Notification) => {
-    // Only navigate if file exists and is not deleted
     if (notification.file_id && notification.files && !notification.files.deleted_at) {
       navigate(`/bestanden/preview/${notification.file_id}`);
     }

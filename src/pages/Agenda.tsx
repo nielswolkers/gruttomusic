@@ -12,6 +12,8 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { UserInviteSearch } from "@/components/agenda/UserInviteSearch";
 
 type TimeFilter = 'vandaag' | 'week' | 'maand';
 type SidebarMode = 'events' | 'create';
@@ -28,7 +30,7 @@ interface CalendarEvent {
   start: Date;
   end: Date;
   allDay: boolean;
-  source: 'task' | 'zermelo' | 'outlook' | 'google';
+  source: 'task' | 'zermelo' | 'outlook' | 'google' | 'local';
   color: string;
 }
 
@@ -55,7 +57,6 @@ const parseICS = (icsContent: string, source: 'zermelo' | 'outlook'): CalendarEv
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i];
     
-    // Handle line folding
     while (i + 1 < lines.length && (lines[i + 1].startsWith(' ') || lines[i + 1].startsWith('\t'))) {
       i++;
       line += lines[i].substring(1);
@@ -144,9 +145,7 @@ const Agenda = () => {
   const [newEventReminder, setNewEventReminder] = useState('5min');
   const [newEventDescription, setNewEventDescription] = useState('');
   const [newEventColor, setNewEventColor] = useState('#10B981');
-  const [newEventInvitees, setNewEventInvitees] = useState('');
-  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
-  const [createdEventId, setCreatedEventId] = useState<string | null>(null);
+  const [newEventInvitees, setNewEventInvitees] = useState<string[]>([]);
 
   useEffect(() => {
     if (user) {
@@ -155,11 +154,61 @@ const Agenda = () => {
   }, [user, currentDate]);
 
   useEffect(() => {
-    // Update date pickers when selected date changes
     const dateStr = format(selectedDate, 'yyyy-MM-dd');
     setNewEventStartDate(dateStr);
     setNewEventEndDate(dateStr);
   }, [selectedDate]);
+
+  // Auto-save event when any field changes (if in create mode and has a title)
+  useEffect(() => {
+    if (sidebarMode === 'create' && newEventTitle.trim() && newEventTitle !== 'Nieuwe Gebeurtenis') {
+      const saveTimer = setTimeout(() => {
+        saveEvent();
+      }, 1000);
+      return () => clearTimeout(saveTimer);
+    }
+  }, [newEventTitle, newEventStartTime, newEventEndTime, newEventAllDay, newEventColor, newEventDescription, newEventInvitees, newEventRepeat, sidebarMode]);
+
+  const saveEvent = async () => {
+    if (!user || !newEventTitle.trim()) return;
+
+    try {
+      // Create as a task with calendar flag
+      const startDate = newEventStartDate || format(selectedDate, 'yyyy-MM-dd');
+      
+      const { error } = await supabase.from("tasks").insert({
+        user_id: user.id,
+        title: newEventTitle.trim(),
+        description: newEventDescription || null,
+        priority: 'regular',
+        due_date: startDate,
+        due_time: newEventAllDay ? null : newEventStartTime,
+        add_to_calendar: true,
+        repeat_type: newEventRepeat === 'none' ? null : newEventRepeat,
+        repeat_interval: 1,
+        repeat_end_date: null,
+      });
+
+      if (error) throw error;
+
+      // Send notifications to invitees
+      if (newEventInvitees.length > 0) {
+        const notifications = newEventInvitees.map(inviteeId => ({
+          recipient_id: inviteeId,
+          sender_id: user.id,
+          type: 'event_invite',
+          message: `Je bent uitgenodigd voor: ${newEventTitle}`,
+        }));
+
+        await supabase.from("notifications").insert(notifications);
+      }
+
+      // Reload events after saving
+      loadEvents();
+    } catch (error) {
+      console.error("Failed to save event:", error);
+    }
+  };
 
   const loadEvents = async () => {
     if (!user) return;
@@ -190,7 +239,7 @@ const Agenda = () => {
         };
       });
 
-      // Load ICS calendar connections and fetch via edge function
+      // Load ICS calendar connections
       const { data: connections } = await supabase
         .from('calendar_connections')
         .select('*')
@@ -254,7 +303,6 @@ const Agenda = () => {
           if (response.ok) {
             const data = await response.json();
             
-            // Update token if refreshed
             if (data.new_token) {
               await supabase
                 .from('google_calendar_connections')
@@ -285,7 +333,6 @@ const Agenda = () => {
     }
   };
 
-  // Navigation handlers
   const navigatePrevious = () => {
     if (timeFilter === 'vandaag') {
       setCurrentDate(subDays(currentDate, 1));
@@ -313,19 +360,16 @@ const Agenda = () => {
     setSelectedDate(new Date());
   };
 
-  // Calendar calculations
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 });
   const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
-  // Week view calculations
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
-  // Day view hours
   const hours = Array.from({ length: 24 }, (_, i) => i);
 
   const eventsForSelectedDate = useMemo(() => {
@@ -336,7 +380,6 @@ const Agenda = () => {
     return events.filter(event => isSameDay(event.start, day));
   };
 
-  // Get events that overlap with a specific hour (for proper positioning)
   const getEventsForHourRange = (day: Date) => {
     return events.filter(event => {
       if (event.allDay) return false;
@@ -348,7 +391,6 @@ const Agenda = () => {
     return events.filter(event => event.allDay && isSameDay(event.start, day));
   };
 
-  // Calculate event position and height in the time grid
   const getEventStyle = (event: CalendarEvent, hourHeight: number) => {
     const startHour = event.start.getHours();
     const startMinute = event.start.getMinutes();
@@ -357,7 +399,7 @@ const Agenda = () => {
     
     const startOffset = (startMinute / 60) * hourHeight;
     const durationMinutes = (endHour * 60 + endMinute) - (startHour * 60 + startMinute);
-    const height = Math.max((durationMinutes / 60) * hourHeight, 20); // Minimum 20px height
+    const height = Math.max((durationMinutes / 60) * hourHeight, 20);
     
     return {
       top: `${startOffset}px`,
@@ -367,7 +409,6 @@ const Agenda = () => {
 
   const weekDayHeaders = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
 
-  // Get the navigation title based on view
   const getNavigationTitle = () => {
     if (timeFilter === 'vandaag') {
       return format(currentDate, 'd MMMM yyyy', { locale: nl });
@@ -377,7 +418,6 @@ const Agenda = () => {
     return format(currentDate, 'MMMM yyyy', { locale: nl });
   };
 
-  // Calculate duration display
   const calculateDuration = () => {
     if (newEventAllDay) return '';
     const [startH, startM] = newEventStartTime.split(':').map(Number);
@@ -391,13 +431,25 @@ const Agenda = () => {
     return `(${hours}h ${mins}m)`;
   };
 
+  const resetEventForm = () => {
+    setNewEventTitle('Nieuwe Gebeurtenis');
+    setNewEventDescription('');
+    setNewEventStartTime('13:20');
+    setNewEventEndTime('16:25');
+    setNewEventAllDay(false);
+    setNewEventRepeat('none');
+    setNewEventReminder('5min');
+    setNewEventColor('#10B981');
+    setNewEventInvitees([]);
+    setSidebarMode('events');
+  };
+
   return (
     <div className="w-full h-[calc(100vh-7rem)] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-shrink-0">
         <h1 className="text-4xl font-bold text-foreground">{filterTitles[timeFilter]}</h1>
         
-        {/* macOS-style segmented control */}
         <div className="flex bg-muted rounded-lg p-1 gap-0.5">
           {(['vandaag', 'week', 'maand'] as TimeFilter[]).map((filter) => (
             <button
@@ -424,28 +476,13 @@ const Agenda = () => {
               {getNavigationTitle()}
             </h2>
             <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={navigatePrevious}
-                className="rounded-full"
-              >
+              <Button variant="ghost" size="icon" onClick={navigatePrevious} className="rounded-full">
                 <ChevronLeft className="w-5 h-5" />
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={goToToday}
-                className="rounded-full px-4"
-              >
+              <Button variant="ghost" size="sm" onClick={goToToday} className="rounded-full px-4">
                 Vandaag
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={navigateNext}
-                className="rounded-full"
-              >
+              <Button variant="ghost" size="icon" onClick={navigateNext} className="rounded-full">
                 <ChevronRight className="w-5 h-5" />
               </Button>
             </div>
@@ -454,7 +491,6 @@ const Agenda = () => {
           {/* Month View */}
           {timeFilter === 'maand' && (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              {/* Week Days Header */}
               <div className="grid grid-cols-7 gap-1 mb-2 flex-shrink-0">
                 {weekDayHeaders.map((day) => (
                   <div key={day} className="text-center text-sm font-medium text-muted-foreground py-2">
@@ -463,7 +499,6 @@ const Agenda = () => {
                 ))}
               </div>
 
-              {/* Calendar Days */}
               <div className="grid grid-cols-7 gap-1 flex-1 auto-rows-fr overflow-hidden">
                 {days.map((day) => {
                   const dayEvents = getEventsForDay(day);
@@ -493,7 +528,6 @@ const Agenda = () => {
                         {format(day, 'd')}
                       </span>
                       
-                      {/* Event dots */}
                       <div className="flex flex-wrap gap-0.5 mt-auto">
                         {dayEvents.slice(0, 3).map((event, idx) => (
                           <div
@@ -524,9 +558,8 @@ const Agenda = () => {
           {/* Week View */}
           {timeFilter === 'week' && (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              {/* Week Header */}
               <div className="grid grid-cols-8 gap-1 mb-2 flex-shrink-0">
-                <div className="w-14" /> {/* Time column spacer */}
+                <div className="w-14" />
                 {weekDays.map((day) => {
                   const isToday = isSameDay(day, new Date());
                   const isSelected = isSameDay(day, selectedDate);
@@ -558,7 +591,6 @@ const Agenda = () => {
                 })}
               </div>
 
-              {/* All Day Events */}
               <div className="grid grid-cols-8 gap-1 mb-2 flex-shrink-0">
                 <div className="w-14 text-xs text-muted-foreground text-right pr-2 pt-1">Hele dag</div>
                 {weekDays.map((day) => {
@@ -579,10 +611,8 @@ const Agenda = () => {
                 })}
               </div>
 
-              {/* Time Grid */}
               <ScrollArea className="flex-1">
                 <div className="relative">
-                  {/* Time labels column */}
                   <div className="absolute left-0 top-0 w-14">
                     {hours.map((hour) => (
                       <div key={hour} className="h-12 text-xs text-muted-foreground text-right pr-2 flex items-start justify-end">
@@ -591,13 +621,11 @@ const Agenda = () => {
                     ))}
                   </div>
                   
-                  {/* Grid with events */}
                   <div className="grid grid-cols-7 gap-1 ml-14">
                     {weekDays.map((day) => {
                       const dayEvents = getEventsForHourRange(day);
                       return (
                         <div key={day.toISOString()} className="relative">
-                          {/* Hour cells */}
                           {hours.map((hour) => {
                             const isNow = isSameDay(day, new Date()) && new Date().getHours() === hour;
                             return (
@@ -611,10 +639,9 @@ const Agenda = () => {
                             );
                           })}
                           
-                          {/* Events overlay */}
                           {dayEvents.map((event) => {
                             const startHour = event.start.getHours();
-                            const style = getEventStyle(event, 48); // 48px = h-12
+                            const style = getEventStyle(event, 48);
                             return (
                               <div
                                 key={event.id}
@@ -642,7 +669,6 @@ const Agenda = () => {
           {/* Day View */}
           {timeFilter === 'vandaag' && (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              {/* All Day Events */}
               <div className="flex gap-2 mb-4 flex-shrink-0">
                 <div className="w-14 text-xs text-muted-foreground text-right pr-2 pt-1">Hele dag</div>
                 <div className="flex-1 min-h-[32px] flex flex-wrap gap-1">
@@ -658,10 +684,8 @@ const Agenda = () => {
                 </div>
               </div>
 
-              {/* Time Grid */}
               <ScrollArea className="flex-1">
                 <div className="relative">
-                  {/* Hour rows */}
                   {hours.map((hour) => {
                     const isNow = isSameDay(currentDate, new Date()) && new Date().getHours() === hour;
                     return (
@@ -679,11 +703,10 @@ const Agenda = () => {
                     );
                   })}
                   
-                  {/* Events overlay */}
                   <div className="absolute left-16 right-0 top-0">
                     {getEventsForHourRange(currentDate).map((event) => {
                       const startHour = event.start.getHours();
-                      const style = getEventStyle(event, 64); // 64px = h-16
+                      const style = getEventStyle(event, 64);
                       return (
                         <div
                           key={event.id}
@@ -710,60 +733,58 @@ const Agenda = () => {
         </div>
 
         {/* Right Sidebar - Fixed Width */}
-        <div className="w-80 flex flex-col gap-4 overflow-hidden flex-shrink-0">
+        <div className="w-72 flex flex-col gap-4 overflow-hidden flex-shrink-0">
           {/* Events/Create Card */}
-          <div className="flex-1 bg-card rounded-2xl border border-border p-5 flex flex-col overflow-hidden min-h-0">
+          <div className="flex-1 bg-card rounded-2xl border border-border p-4 flex flex-col overflow-hidden min-h-0">
             {sidebarMode === 'create' ? (
               <>
                 {/* Create Event Header - Editable Title */}
                 <Input
                   value={newEventTitle}
                   onChange={(e) => setNewEventTitle(e.target.value)}
-                  className="text-lg font-semibold mb-4 flex-shrink-0 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
+                  className="text-lg font-semibold mb-3 flex-shrink-0 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
                   placeholder="Nieuwe Gebeurtenis"
                 />
                 
-                <ScrollArea className="flex-1">
-                  <div className="space-y-4 pr-2">
+                <ScrollArea className="flex-1 -mx-1 px-1">
+                  <div className="space-y-3">
                     {/* Date */}
-                    <div className="flex items-center gap-3">
-                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Datum</Label>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Datum</Label>
                       <Input
                         type="text"
-                        value={`${format(new Date(newEventStartDate || selectedDate), 'd MMMM yyyy', { locale: nl })} - ${format(new Date(newEventEndDate || selectedDate), 'd MMM...', { locale: nl })}`}
-                        className="flex-1 h-9 text-sm"
+                        value={format(new Date(newEventStartDate || selectedDate), 'd MMMM yyyy', { locale: nl })}
+                        className="h-8 text-sm"
                         readOnly
                       />
                     </div>
 
                     {/* Time */}
-                    <div className="flex items-center gap-3">
-                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Tijd</Label>
-                      <div className="flex-1 flex items-center gap-1">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Tijd</Label>
+                      <div className="flex items-center gap-1">
                         <Input
                           type="time"
                           value={newEventStartTime}
                           onChange={(e) => setNewEventStartTime(e.target.value)}
-                          className="h-9 text-sm flex-1"
+                          className="h-8 text-sm flex-1"
                           disabled={newEventAllDay}
                         />
-                        <span className="text-muted-foreground">-</span>
+                        <span className="text-muted-foreground text-xs">-</span>
                         <Input
                           type="time"
                           value={newEventEndTime}
                           onChange={(e) => setNewEventEndTime(e.target.value)}
-                          className="h-9 text-sm flex-1"
+                          className="h-8 text-sm flex-1"
                           disabled={newEventAllDay}
                         />
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          {calculateDuration()}
-                        </span>
                       </div>
+                      <span className="text-xs text-muted-foreground">{calculateDuration()}</span>
                     </div>
 
                     {/* All Day Toggle */}
-                    <div className="flex items-center gap-3">
-                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Hele dag</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs text-muted-foreground">Hele dag</Label>
                       <Switch
                         checked={newEventAllDay}
                         onCheckedChange={setNewEventAllDay}
@@ -771,10 +792,10 @@ const Agenda = () => {
                     </div>
 
                     {/* Repeat */}
-                    <div className="flex items-center gap-3">
-                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Herhalen</Label>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Herhalen</Label>
                       <Select value={newEventRepeat} onValueChange={setNewEventRepeat}>
-                        <SelectTrigger className="flex-1 h-9 text-sm">
+                        <SelectTrigger className="h-8 text-sm">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -787,10 +808,10 @@ const Agenda = () => {
                     </div>
 
                     {/* Reminder */}
-                    <div className="flex items-center gap-3">
-                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Herinneringen</Label>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Herinneringen</Label>
                       <Select value={newEventReminder} onValueChange={setNewEventReminder}>
-                        <SelectTrigger className="flex-1 h-9 text-sm">
+                        <SelectTrigger className="h-8 text-sm">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -804,27 +825,27 @@ const Agenda = () => {
                     </div>
 
                     {/* Description */}
-                    <div className="flex gap-3">
-                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0 pt-2">Beschrijving</Label>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Beschrijving</Label>
                       <Textarea
                         value={newEventDescription}
                         onChange={(e) => setNewEventDescription(e.target.value)}
-                        className="flex-1 min-h-[80px] text-sm resize-none"
+                        className="min-h-[60px] text-sm resize-none"
                         placeholder=""
                       />
                     </div>
 
                     {/* Color */}
-                    <div className="flex items-center gap-3">
-                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Kleur</Label>
-                      <div className="flex gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Kleur</Label>
+                      <div className="flex gap-1.5 flex-wrap">
                         {EVENT_COLORS.map((color) => (
                           <button
                             key={color.name}
                             onClick={() => setNewEventColor(color.value)}
                             className={cn(
-                              "w-6 h-6 rounded-full transition-all",
-                              newEventColor === color.value && "ring-2 ring-offset-2 ring-primary"
+                              "w-5 h-5 rounded-full transition-all",
+                              newEventColor === color.value && "ring-2 ring-offset-1 ring-primary"
                             )}
                             style={{ backgroundColor: color.value }}
                           />
@@ -833,10 +854,10 @@ const Agenda = () => {
                     </div>
 
                     {/* Calendar Selection */}
-                    <div className="flex items-center gap-3">
-                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Agenda's</Label>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Agenda's</Label>
                       <Select defaultValue="personal">
-                        <SelectTrigger className="flex-1 h-9 text-sm">
+                        <SelectTrigger className="h-8 text-sm">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -846,17 +867,12 @@ const Agenda = () => {
                     </div>
 
                     {/* Invitees */}
-                    <div className="flex items-center gap-3">
-                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Uitnodigen</Label>
-                      <div className="flex-1 relative">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input
-                          value={newEventInvitees}
-                          onChange={(e) => setNewEventInvitees(e.target.value)}
-                          className="h-9 text-sm pl-8"
-                          placeholder="gebruikersnaam zoe..."
-                        />
-                      </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Uitnodigen</Label>
+                      <UserInviteSearch
+                        invitees={newEventInvitees}
+                        onInviteesChange={setNewEventInvitees}
+                      />
                     </div>
                   </div>
                 </ScrollArea>
@@ -907,7 +923,7 @@ const Agenda = () => {
                             className="inline-block mt-2 text-xs px-2 py-0.5 rounded-full"
                             style={{ backgroundColor: event.color, color: 'white' }}
                           >
-                            {event.source === 'task' ? 'Taak' : event.source === 'zermelo' ? 'Zermelo' : event.source === 'google' ? 'Google' : 'Outlook'}
+                            {event.source === 'task' ? 'Taak' : event.source === 'zermelo' ? 'Zermelo' : event.source === 'google' ? 'Google' : event.source === 'outlook' ? 'Outlook' : 'Lokaal'}
                           </span>
                         </div>
                       ))}
@@ -957,21 +973,7 @@ const Agenda = () => {
             <Button
               variant="outline"
               className="w-full h-12 rounded-xl flex-shrink-0"
-              onClick={() => {
-                // Reset form and go back to events view
-                setNewEventTitle('Nieuwe Gebeurtenis');
-                setNewEventDescription('');
-                setNewEventStartTime('13:20');
-                setNewEventEndTime('16:25');
-                setNewEventAllDay(false);
-                setNewEventRepeat('none');
-                setNewEventReminder('5min');
-                setNewEventColor('#10B981');
-                setNewEventInvitees('');
-                setIsCreatingEvent(false);
-                setCreatedEventId(null);
-                setSidebarMode('events');
-              }}
+              onClick={resetEventForm}
             >
               Annuleren
             </Button>
