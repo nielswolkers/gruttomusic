@@ -39,6 +39,13 @@ const priorityPillColors = {
   low: "bg-gray-100 text-gray-600 border-gray-200",
 };
 
+// Truncate text to max words
+const truncateWords = (text: string, maxWords: number): string => {
+  const words = text.split(/\s+/);
+  if (words.length <= maxWords) return text;
+  return words.slice(0, maxWords).join(' ') + '...';
+};
+
 // Check if a repeating task should appear on a specific date
 const shouldRepeatOnDate = (task: Task, targetDate: Date): boolean => {
   if (!task.repeat_type) return false;
@@ -66,7 +73,6 @@ const shouldRepeatOnDate = (task: Task, targetDate: Date): boolean => {
     }
     case "weekly": {
       const weeksDiff = differenceInWeeks(target, taskStartDate);
-      // Check if it's on the right week and same day of week
       if (weeksDiff > 0 && weeksDiff % interval === 0) {
         return target.getDay() === taskStartDate.getDay();
       }
@@ -115,7 +121,6 @@ const Taken = () => {
       const dateStr = format(selectedDate, "yyyy-MM-dd");
       const today = format(new Date(), "yyyy-MM-dd");
 
-      // Fetch all user tasks to check for repeating ones
       const { data: allTasks, error: allError } = await supabase
         .from("tasks")
         .select("*")
@@ -127,11 +132,9 @@ const Taken = () => {
       const allTasksTyped = (allTasks as Task[]) || [];
       let displayTasks: DisplayTask[] = [];
 
-      // Get tasks that are due on the selected date
       const tasksForDate = allTasksTyped.filter(t => t.due_date === dateStr);
       displayTasks.push(...tasksForDate);
 
-      // If viewing today, add incomplete tasks from previous days (rollover)
       if (dateStr === today) {
         const overdueTasks = allTasksTyped.filter(
           t => t.due_date < dateStr && !t.completed && !t.repeat_type
@@ -139,17 +142,14 @@ const Taken = () => {
         displayTasks.push(...overdueTasks);
       }
 
-      // Check for repeating tasks that should appear on this date
       const repeatingTasks = allTasksTyped.filter(t => t.repeat_type && !t.completed);
       for (const task of repeatingTasks) {
         if (shouldRepeatOnDate(task, selectedDate)) {
-          // Check if there's already a task instance for this date
           const existingInstance = allTasksTyped.find(
             t => t.title === task.title && t.due_date === dateStr && t.id !== task.id
           );
           
           if (!existingInstance) {
-            // Add as a repeat instance
             displayTasks.push({
               ...task,
               due_date: dateStr,
@@ -162,7 +162,6 @@ const Taken = () => {
         }
       }
 
-      // Sort by time, then by created_at
       displayTasks.sort((a, b) => {
         if (a.due_time && b.due_time) {
           return a.due_time.localeCompare(b.due_time);
@@ -194,11 +193,15 @@ const Taken = () => {
   }) => {
     if (!user) return;
 
+    // Truncate title to max 25 words and description to max 200 words
+    const truncatedTitle = truncateWords(taskData.title, 25);
+    const truncatedDescription = truncateWords(taskData.description, 200);
+
     try {
       const { error } = await supabase.from("tasks").insert({
         user_id: user.id,
-        title: taskData.title,
-        description: taskData.description || null,
+        title: truncatedTitle,
+        description: truncatedDescription || null,
         priority: taskData.priority,
         due_date: format(taskData.dueDate, "yyyy-MM-dd"),
         due_time: taskData.dueTime || null,
@@ -221,12 +224,16 @@ const Taken = () => {
   const handleUpdateTask = async (task: Task) => {
     if (!user) return;
 
+    // Truncate on update as well
+    const truncatedTitle = truncateWords(task.title, 25);
+    const truncatedDescription = task.description ? truncateWords(task.description, 200) : null;
+
     try {
       const { error } = await supabase
         .from("tasks")
         .update({
-          title: task.title,
-          description: task.description,
+          title: truncatedTitle,
+          description: truncatedDescription,
           priority: task.priority,
           due_date: task.due_date,
           due_time: task.due_time,
@@ -252,7 +259,6 @@ const Taken = () => {
     if (!user) return;
 
     try {
-      // If this is a repeat instance, create a new completed task for this date
       if (task.isRepeatInstance && task.originalTaskId) {
         const { error } = await supabase.from("tasks").insert({
           user_id: user.id,
@@ -262,7 +268,7 @@ const Taken = () => {
           due_date: task.due_date,
           due_time: task.due_time,
           add_to_calendar: task.add_to_calendar,
-          repeat_type: null, // Instance doesn't repeat
+          repeat_type: null,
           repeat_interval: 1,
           repeat_end_date: null,
           completed: true,
@@ -271,7 +277,6 @@ const Taken = () => {
 
         if (error) throw error;
       } else {
-        // Regular task - toggle completion
         const { error } = await supabase
           .from("tasks")
           .update({
@@ -306,7 +311,6 @@ const Taken = () => {
   };
 
   const handleTaskClick = (task: DisplayTask) => {
-    // For repeat instances, we need to handle them differently in the view dialog
     setSelectedTask(task);
     setIsViewDialogOpen(true);
   };
@@ -344,13 +348,13 @@ const Taken = () => {
   if (!user) return null;
 
   return (
-    <div className="w-full h-[calc(100vh-7rem)] flex flex-col overflow-hidden">
+    <div className="w-full max-w-full h-[calc(100vh-7rem)] flex flex-col overflow-hidden">
       {/* Header with navigation */}
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-4xl font-bold text-foreground capitalize">
+      <div className="flex items-center justify-between mb-8 flex-shrink-0">
+        <h1 className="text-4xl font-bold text-foreground capitalize truncate">
           {formatDateHeader()}
         </h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <Button
             variant="outline"
             size="icon"
@@ -380,9 +384,8 @@ const Taken = () => {
         </div>
       </div>
 
-
       {/* Tasks list */}
-      <div className="flex-1 space-y-3 overflow-y-auto pb-6">
+      <div className="flex-1 space-y-3 overflow-y-auto overflow-x-hidden pb-6">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -397,7 +400,7 @@ const Taken = () => {
               key={task.id}
               onClick={() => handleTaskClick(task)}
               className={cn(
-                "group flex items-center gap-4 p-4 rounded-2xl border bg-card transition-all cursor-pointer hover:shadow-sm",
+                "group flex items-center gap-4 p-4 rounded-2xl border bg-card transition-all cursor-pointer hover:shadow-sm max-w-full",
                 task.completed
                   ? "border-border/50 opacity-60"
                   : isOverdue(task)
@@ -409,13 +412,13 @@ const Taken = () => {
                 checked={task.completed}
                 onCheckedChange={() => {}}
                 onClick={(e) => handleToggleComplete(task, e)}
-                className="h-5 w-5 rounded-full border-2"
+                className="h-5 w-5 rounded-full border-2 flex-shrink-0"
               />
-                <div className="flex-1 min-w-0 overflow-hidden">
+              <div className="flex-1 min-w-0 overflow-hidden">
                 <div className="flex items-center gap-2 min-w-0">
                   <p
                     className={cn(
-                      "font-medium truncate flex-shrink min-w-0",
+                      "font-medium truncate min-w-0 flex-1",
                       task.completed
                         ? "line-through text-muted-foreground"
                         : isOverdue(task)
@@ -438,7 +441,7 @@ const Taken = () => {
                   )}
                 </div>
                 {task.description && !task.completed && (
-                  <p className="text-sm text-muted-foreground mt-1 truncate max-w-full">
+                  <p className="text-sm text-muted-foreground mt-1 truncate">
                     {task.description}
                   </p>
                 )}
