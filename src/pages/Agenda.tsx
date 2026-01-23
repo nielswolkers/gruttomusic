@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, parseISO, addWeeks, subWeeks, addDays, subDays, eachHourOfInterval, startOfDay, endOfDay } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, parseISO, addWeeks, subWeeks, addDays, subDays } from "date-fns";
 import { nl } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,7 +22,7 @@ interface CalendarEvent {
   start: Date;
   end: Date;
   allDay: boolean;
-  source: 'task' | 'zermelo' | 'outlook';
+  source: 'task' | 'zermelo' | 'outlook' | 'google';
   color: string;
 }
 
@@ -149,7 +149,7 @@ const Agenda = () => {
         };
       });
 
-      // Load calendar connections and fetch ICS
+      // Load ICS calendar connections and fetch via edge function
       const { data: connections } = await supabase
         .from('calendar_connections')
         .select('*')
@@ -159,10 +159,20 @@ const Agenda = () => {
 
       for (const connection of (connections || []) as CalendarConnection[]) {
         try {
-          const response = await fetch(connection.ics_url);
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-ics`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+              },
+              body: JSON.stringify({ url: connection.ics_url }),
+            }
+          );
           if (response.ok) {
-            const icsContent = await response.text();
-            const parsed = parseICS(icsContent, connection.provider as 'zermelo' | 'outlook');
+            const { content } = await response.json();
+            const parsed = parseICS(content, connection.provider as 'zermelo' | 'outlook');
             icsEvents = [...icsEvents, ...parsed];
           }
         } catch (error) {
@@ -170,7 +180,63 @@ const Agenda = () => {
         }
       }
 
-      setEvents([...taskEvents, ...icsEvents]);
+      // Load Google Calendar events
+      let googleEvents: CalendarEvent[] = [];
+      const { data: googleConnection } = await supabase
+        .from('google_calendar_connections')
+        .select('access_token, refresh_token')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (googleConnection?.access_token) {
+        try {
+          const timeMin = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1).toISOString();
+          const timeMax = new Date(currentDate.getFullYear(), currentDate.getMonth() + 2, 0).toISOString();
+          
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-events`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+              },
+              body: JSON.stringify({
+                access_token: googleConnection.access_token,
+                refresh_token: googleConnection.refresh_token,
+                time_min: timeMin,
+                time_max: timeMax,
+              }),
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            
+            // Update token if refreshed
+            if (data.new_token) {
+              await supabase
+                .from('google_calendar_connections')
+                .update({ access_token: data.new_token, updated_at: new Date().toISOString() })
+                .eq('user_id', user.id);
+            }
+
+            googleEvents = (data.events || []).map((event: any) => ({
+              id: `google-${event.id}`,
+              title: event.title,
+              start: new Date(event.start),
+              end: new Date(event.end),
+              allDay: event.allDay,
+              source: 'google' as const,
+              color: event.calendarColor || '#EA4335',
+            }));
+          }
+        } catch (error) {
+          console.error('Failed to fetch Google Calendar events:', error);
+        }
+      }
+
+      setEvents([...taskEvents, ...icsEvents, ...googleEvents]);
     } catch (error) {
       console.error('Failed to load events:', error);
     } finally {
@@ -253,9 +319,9 @@ const Agenda = () => {
   };
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-shrink-0">
         <h1 className="text-4xl font-bold text-foreground">{filterTitles[timeFilter]}</h1>
         
         {/* macOS-style segmented control */}
@@ -276,9 +342,9 @@ const Agenda = () => {
         </div>
       </div>
 
-      <div className="flex-1 flex gap-6 min-h-0">
+      <div className="flex-1 flex gap-6 min-h-0 overflow-hidden">
         {/* Calendar Grid */}
-        <div className="flex-1 flex flex-col bg-card rounded-2xl border border-border p-6 min-h-0">
+        <div className="flex-1 flex flex-col bg-card rounded-2xl border border-border p-6 min-h-0 overflow-hidden">
           {/* Navigation */}
           <div className="flex items-center justify-between mb-6 flex-shrink-0">
             <h2 className="text-2xl font-semibold capitalize">
@@ -314,7 +380,7 @@ const Agenda = () => {
 
           {/* Month View */}
           {timeFilter === 'maand' && (
-            <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
               {/* Week Days Header */}
               <div className="grid grid-cols-7 gap-1 mb-2 flex-shrink-0">
                 {weekDayHeaders.map((day) => (
@@ -325,7 +391,7 @@ const Agenda = () => {
               </div>
 
               {/* Calendar Days */}
-              <div className="grid grid-cols-7 gap-1 flex-1 auto-rows-fr">
+              <div className="grid grid-cols-7 gap-1 flex-1 auto-rows-fr overflow-hidden">
                 {days.map((day) => {
                   const dayEvents = getEventsForDay(day);
                   const isSelected = isSameDay(day, selectedDate);
@@ -337,7 +403,7 @@ const Agenda = () => {
                       key={day.toISOString()}
                       onClick={() => setSelectedDate(day)}
                       className={cn(
-                        "relative p-2 rounded-xl text-sm transition-all flex flex-col items-start",
+                        "relative p-2 rounded-xl text-sm transition-all flex flex-col items-start overflow-hidden",
                         isSelected && "bg-primary text-primary-foreground",
                         !isSelected && isToday && "bg-primary/10",
                         !isSelected && !isToday && "hover:bg-muted/50",
@@ -531,7 +597,7 @@ const Agenda = () => {
         </div>
 
         {/* Selected Day Events - Fixed Height Sidebar */}
-        <div className="w-80 bg-card rounded-2xl border border-border p-6 flex flex-col h-fit max-h-full">
+        <div className="w-80 bg-card rounded-2xl border border-border p-6 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between mb-4 flex-shrink-0">
             <div>
               <h3 className="text-lg font-semibold">
@@ -555,7 +621,7 @@ const Agenda = () => {
               <p className="text-muted-foreground text-sm">Geen afspraken</p>
             </div>
           ) : (
-            <ScrollArea className="flex-1 max-h-[400px]">
+            <ScrollArea className="flex-1">
               <div className="space-y-2 pr-2">
                 {eventsForSelectedDate.map((event) => (
                   <div
@@ -578,7 +644,7 @@ const Agenda = () => {
                       className="inline-block mt-2 text-xs px-2 py-0.5 rounded-full"
                       style={{ backgroundColor: event.color, color: 'white' }}
                     >
-                      {event.source === 'task' ? 'Taak' : event.source === 'zermelo' ? 'Zermelo' : 'Outlook'}
+                      {event.source === 'task' ? 'Taak' : event.source === 'zermelo' ? 'Zermelo' : event.source === 'google' ? 'Google' : 'Outlook'}
                     </span>
                   </div>
                 ))}
@@ -601,6 +667,10 @@ const Agenda = () => {
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 rounded-full bg-[#8B5CF6]" />
                 <span className="text-xs">Outlook</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-[#EA4335]" />
+                <span className="text-xs">Google</span>
               </div>
             </div>
           </div>
