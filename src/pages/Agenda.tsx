@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Monitor, Search } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, parseISO, addWeeks, subWeeks, addDays, subDays } from "date-fns";
 import { nl } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,8 +7,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 type TimeFilter = 'vandaag' | 'week' | 'maand';
+type SidebarMode = 'events' | 'create';
 
 const filterTitles: Record<TimeFilter, string> = {
   vandaag: 'Vandaag',
@@ -106,6 +112,17 @@ const parseICSDate = (dateStr: string): Date => {
   return new Date(year, month, day);
 };
 
+const EVENT_COLORS = [
+  { name: 'yellow', value: '#FBBF24' },
+  { name: 'orange', value: '#F97316' },
+  { name: 'red', value: '#EF4444' },
+  { name: 'pink', value: '#EC4899' },
+  { name: 'green', value: '#10B981' },
+  { name: 'cyan', value: '#06B6D4' },
+  { name: 'blue', value: '#3B82F6' },
+  { name: 'gray', value: '#9CA3AF' },
+];
+
 const Agenda = () => {
   const { user } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -113,12 +130,34 @@ const Agenda = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('maand');
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>('events');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Event creation form state
+  const [newEventTitle, setNewEventTitle] = useState('');
+  const [newEventStartDate, setNewEventStartDate] = useState('');
+  const [newEventEndDate, setNewEventEndDate] = useState('');
+  const [newEventStartTime, setNewEventStartTime] = useState('13:20');
+  const [newEventEndTime, setNewEventEndTime] = useState('16:25');
+  const [newEventAllDay, setNewEventAllDay] = useState(false);
+  const [newEventRepeat, setNewEventRepeat] = useState('none');
+  const [newEventReminder, setNewEventReminder] = useState('5min');
+  const [newEventDescription, setNewEventDescription] = useState('');
+  const [newEventColor, setNewEventColor] = useState('#10B981');
+  const [newEventInvitees, setNewEventInvitees] = useState('');
 
   useEffect(() => {
     if (user) {
       loadEvents();
     }
   }, [user, currentDate]);
+
+  useEffect(() => {
+    // Update date pickers when selected date changes
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    setNewEventStartDate(dateStr);
+    setNewEventEndDate(dateStr);
+  }, [selectedDate]);
 
   const loadEvents = async () => {
     if (!user) return;
@@ -318,8 +357,22 @@ const Agenda = () => {
     return format(currentDate, 'MMMM yyyy', { locale: nl });
   };
 
+  // Calculate duration display
+  const calculateDuration = () => {
+    if (newEventAllDay) return '';
+    const [startH, startM] = newEventStartTime.split(':').map(Number);
+    const [endH, endM] = newEventEndTime.split(':').map(Number);
+    const startMins = startH * 60 + startM;
+    const endMins = endH * 60 + endM;
+    const diffMins = endMins - startMins;
+    if (diffMins <= 0) return '';
+    const hours = Math.floor(diffMins / 60);
+    const mins = diffMins % 60;
+    return `(${hours}h ${mins}m)`;
+  };
+
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden">
+    <div className="w-full h-[calc(100vh-7rem)] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-shrink-0">
         <h1 className="text-4xl font-bold text-foreground">{filterTitles[timeFilter]}</h1>
@@ -401,7 +454,10 @@ const Agenda = () => {
                   return (
                     <button
                       key={day.toISOString()}
-                      onClick={() => setSelectedDate(day)}
+                      onClick={() => {
+                        setSelectedDate(day);
+                        setSidebarMode('events');
+                      }}
                       className={cn(
                         "relative p-2 rounded-xl text-sm transition-all flex flex-col items-start overflow-hidden",
                         isSelected && "bg-primary text-primary-foreground",
@@ -457,7 +513,10 @@ const Agenda = () => {
                   return (
                     <button
                       key={day.toISOString()}
-                      onClick={() => setSelectedDate(day)}
+                      onClick={() => {
+                        setSelectedDate(day);
+                        setSidebarMode('events');
+                      }}
                       className={cn(
                         "text-center py-2 rounded-lg transition-all",
                         isSelected && "bg-primary text-primary-foreground",
@@ -596,84 +655,254 @@ const Agenda = () => {
           )}
         </div>
 
-        {/* Selected Day Events - Fixed Height Sidebar */}
-        <div className="w-80 bg-card rounded-2xl border border-border p-6 flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between mb-4 flex-shrink-0">
-            <div>
-              <h3 className="text-lg font-semibold">
-                {format(selectedDate, 'd MMMM', { locale: nl })}
-              </h3>
-              <p className="text-sm text-muted-foreground capitalize">
-                {format(selectedDate, 'EEEE', { locale: nl })}
-              </p>
-            </div>
+        {/* Right Sidebar - Fixed Width */}
+        <div className="w-80 flex flex-col gap-4 overflow-hidden flex-shrink-0">
+          {/* Events/Create Card */}
+          <div className="flex-1 bg-card rounded-2xl border border-border p-5 flex flex-col overflow-hidden min-h-0">
+            {sidebarMode === 'create' ? (
+              <>
+                {/* Create Event Header */}
+                <h3 className="text-lg font-semibold mb-4 flex-shrink-0">Nieuwe Gebeurtenis</h3>
+                
+                <ScrollArea className="flex-1">
+                  <div className="space-y-4 pr-2">
+                    {/* Date */}
+                    <div className="flex items-center gap-3">
+                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Datum</Label>
+                      <Input
+                        type="text"
+                        value={`${format(new Date(newEventStartDate || selectedDate), 'd MMMM yyyy', { locale: nl })} - ${format(new Date(newEventEndDate || selectedDate), 'd MMM...', { locale: nl })}`}
+                        className="flex-1 h-9 text-sm"
+                        readOnly
+                      />
+                    </div>
+
+                    {/* Time */}
+                    <div className="flex items-center gap-3">
+                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Tijd</Label>
+                      <div className="flex-1 flex items-center gap-1">
+                        <Input
+                          type="time"
+                          value={newEventStartTime}
+                          onChange={(e) => setNewEventStartTime(e.target.value)}
+                          className="h-9 text-sm flex-1"
+                          disabled={newEventAllDay}
+                        />
+                        <span className="text-muted-foreground">-</span>
+                        <Input
+                          type="time"
+                          value={newEventEndTime}
+                          onChange={(e) => setNewEventEndTime(e.target.value)}
+                          className="h-9 text-sm flex-1"
+                          disabled={newEventAllDay}
+                        />
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {calculateDuration()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* All Day Toggle */}
+                    <div className="flex items-center gap-3">
+                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Hele dag</Label>
+                      <Switch
+                        checked={newEventAllDay}
+                        onCheckedChange={setNewEventAllDay}
+                      />
+                    </div>
+
+                    {/* Repeat */}
+                    <div className="flex items-center gap-3">
+                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Herhalen</Label>
+                      <Select value={newEventRepeat} onValueChange={setNewEventRepeat}>
+                        <SelectTrigger className="flex-1 h-9 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Nooit</SelectItem>
+                          <SelectItem value="daily">Dagelijks</SelectItem>
+                          <SelectItem value="weekly">Wekelijks</SelectItem>
+                          <SelectItem value="monthly">Maandelijks</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Reminder */}
+                    <div className="flex items-center gap-3">
+                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Herinneringen</Label>
+                      <Select value={newEventReminder} onValueChange={setNewEventReminder}>
+                        <SelectTrigger className="flex-1 h-9 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Geen</SelectItem>
+                          <SelectItem value="5min">5 minuten</SelectItem>
+                          <SelectItem value="15min">15 minuten</SelectItem>
+                          <SelectItem value="30min">30 minuten</SelectItem>
+                          <SelectItem value="1hour">1 uur</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Description */}
+                    <div className="flex gap-3">
+                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0 pt-2">Beschrijving</Label>
+                      <Textarea
+                        value={newEventDescription}
+                        onChange={(e) => setNewEventDescription(e.target.value)}
+                        className="flex-1 min-h-[80px] text-sm resize-none"
+                        placeholder=""
+                      />
+                    </div>
+
+                    {/* Color */}
+                    <div className="flex items-center gap-3">
+                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Kleur</Label>
+                      <div className="flex gap-2">
+                        {EVENT_COLORS.map((color) => (
+                          <button
+                            key={color.name}
+                            onClick={() => setNewEventColor(color.value)}
+                            className={cn(
+                              "w-6 h-6 rounded-full transition-all",
+                              newEventColor === color.value && "ring-2 ring-offset-2 ring-primary"
+                            )}
+                            style={{ backgroundColor: color.value }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Calendar Selection */}
+                    <div className="flex items-center gap-3">
+                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Agenda's</Label>
+                      <Select defaultValue="personal">
+                        <SelectTrigger className="flex-1 h-9 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="personal">Persoonlijk</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Invitees */}
+                    <div className="flex items-center gap-3">
+                      <Label className="w-24 text-sm text-muted-foreground flex-shrink-0">Uitnodigen</Label>
+                      <div className="flex-1 relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          value={newEventInvitees}
+                          onChange={(e) => setNewEventInvitees(e.target.value)}
+                          className="h-9 text-sm pl-8"
+                          placeholder="gebruikersnaam zoe..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </ScrollArea>
+              </>
+            ) : (
+              <>
+                {/* Selected Day Events Header */}
+                <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                  <div>
+                    <h3 className="text-lg font-semibold">
+                      {format(selectedDate, 'd MMMM', { locale: nl })}
+                    </h3>
+                    <p className="text-sm text-muted-foreground capitalize">
+                      {format(selectedDate, 'EEEE', { locale: nl })}
+                    </p>
+                  </div>
+                </div>
+
+                {loading ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                  </div>
+                ) : eventsForSelectedDate.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <p className="text-muted-foreground text-sm">Geen afspraken</p>
+                  </div>
+                ) : (
+                  <ScrollArea className="flex-1">
+                    <div className="space-y-2 pr-2">
+                      {eventsForSelectedDate.map((event) => (
+                        <div
+                          key={event.id}
+                          className="p-3 rounded-xl border-l-4"
+                          style={{ 
+                            borderLeftColor: event.color,
+                            backgroundColor: `${event.color}10`
+                          }}
+                        >
+                          <p className="font-medium text-sm">{event.title}</p>
+                          {!event.allDay && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {format(event.start, 'HH:mm')}
+                              {event.end && event.start.getTime() !== event.end.getTime() && 
+                                ` - ${format(event.end, 'HH:mm')}`}
+                            </p>
+                          )}
+                          <span 
+                            className="inline-block mt-2 text-xs px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: event.color, color: 'white' }}
+                          >
+                            {event.source === 'task' ? 'Taak' : event.source === 'zermelo' ? 'Zermelo' : event.source === 'google' ? 'Google' : 'Outlook'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+
+                {/* Search */}
+                <div className="mt-4 pt-4 border-t border-border flex-shrink-0">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Zoeken in Agenda"
+                      className="pl-9 h-10"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
-          {loading ? (
-            <div className="h-32 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+          {/* Action Buttons - Only show in events mode */}
+          {sidebarMode === 'events' && (
+            <div className="flex flex-col gap-2 flex-shrink-0">
+              <Button
+                variant="outline"
+                className="w-full h-12 justify-start gap-3 rounded-xl"
+                onClick={() => setSidebarMode('create')}
+              >
+                <Plus className="w-5 h-5" />
+                Voeg gebeurtenis toe
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full h-12 justify-start gap-3 rounded-xl"
+              >
+                <Monitor className="w-5 h-5" />
+                Plan een meeting
+              </Button>
             </div>
-          ) : eventsForSelectedDate.length === 0 ? (
-            <div className="h-32 flex flex-col items-center justify-center text-center">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                <Plus className="w-6 h-6 text-muted-foreground" />
-              </div>
-              <p className="text-muted-foreground text-sm">Geen afspraken</p>
-            </div>
-          ) : (
-            <ScrollArea className="flex-1">
-              <div className="space-y-2 pr-2">
-                {eventsForSelectedDate.map((event) => (
-                  <div
-                    key={event.id}
-                    className="p-3 rounded-xl border-l-4"
-                    style={{ 
-                      borderLeftColor: event.color,
-                      backgroundColor: `${event.color}10`
-                    }}
-                  >
-                    <p className="font-medium text-sm">{event.title}</p>
-                    {!event.allDay && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {format(event.start, 'HH:mm')}
-                        {event.end && event.start.getTime() !== event.end.getTime() && 
-                          ` - ${format(event.end, 'HH:mm')}`}
-                      </p>
-                    )}
-                    <span 
-                      className="inline-block mt-2 text-xs px-2 py-0.5 rounded-full"
-                      style={{ backgroundColor: event.color, color: 'white' }}
-                    >
-                      {event.source === 'task' ? 'Taak' : event.source === 'zermelo' ? 'Zermelo' : event.source === 'google' ? 'Google' : 'Outlook'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
           )}
 
-          {/* Legend */}
-          <div className="mt-4 pt-4 border-t border-border flex-shrink-0">
-            <p className="text-xs text-muted-foreground mb-2">Legenda</p>
-            <div className="flex flex-wrap gap-2">
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-[#10B981]" />
-                <span className="text-xs">Taken</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-[#3B82F6]" />
-                <span className="text-xs">Zermelo</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-[#8B5CF6]" />
-                <span className="text-xs">Outlook</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-[#EA4335]" />
-                <span className="text-xs">Google</span>
-              </div>
-            </div>
-          </div>
+          {/* Back button in create mode */}
+          {sidebarMode === 'create' && (
+            <Button
+              variant="outline"
+              className="w-full h-12 rounded-xl flex-shrink-0"
+              onClick={() => setSidebarMode('events')}
+            >
+              Annuleren
+            </Button>
+          )}
         </div>
       </div>
     </div>

@@ -411,7 +411,7 @@ const Taken = () => {
                 onClick={(e) => handleToggleComplete(task, e)}
                 className="h-5 w-5 rounded-full border-2"
               />
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 overflow-hidden">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p
                     className={cn(
