@@ -173,6 +173,42 @@ export type Database = {
           },
         ]
       }
+      google_calendar_connections: {
+        Row: {
+          access_token: string | null
+          connected_at: string
+          google_email: string | null
+          google_name: string | null
+          id: string
+          refresh_token: string | null
+          token_expiry: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token?: string | null
+          connected_at?: string
+          google_email?: string | null
+          google_name?: string | null
+          id?: string
+          refresh_token?: string | null
+          token_expiry?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string | null
+          connected_at?: string
+          google_email?: string | null
+          google_name?: string | null
+          id?: string
+          refresh_token?: string | null
+          token_expiry?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           created_at: string
