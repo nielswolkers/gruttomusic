@@ -134,7 +134,7 @@ const Agenda = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Event creation form state
-  const [newEventTitle, setNewEventTitle] = useState('');
+  const [newEventTitle, setNewEventTitle] = useState('Nieuwe Gebeurtenis');
   const [newEventStartDate, setNewEventStartDate] = useState('');
   const [newEventEndDate, setNewEventEndDate] = useState('');
   const [newEventStartTime, setNewEventStartTime] = useState('13:20');
@@ -145,6 +145,8 @@ const Agenda = () => {
   const [newEventDescription, setNewEventDescription] = useState('');
   const [newEventColor, setNewEventColor] = useState('#10B981');
   const [newEventInvitees, setNewEventInvitees] = useState('');
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+  const [createdEventId, setCreatedEventId] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -334,15 +336,33 @@ const Agenda = () => {
     return events.filter(event => isSameDay(event.start, day));
   };
 
-  const getEventsForHour = (day: Date, hour: number) => {
+  // Get events that overlap with a specific hour (for proper positioning)
+  const getEventsForHourRange = (day: Date) => {
     return events.filter(event => {
       if (event.allDay) return false;
-      return isSameDay(event.start, day) && event.start.getHours() === hour;
+      return isSameDay(event.start, day);
     });
   };
 
   const getAllDayEventsForDay = (day: Date) => {
     return events.filter(event => event.allDay && isSameDay(event.start, day));
+  };
+
+  // Calculate event position and height in the time grid
+  const getEventStyle = (event: CalendarEvent, hourHeight: number) => {
+    const startHour = event.start.getHours();
+    const startMinute = event.start.getMinutes();
+    const endHour = event.end.getHours();
+    const endMinute = event.end.getMinutes();
+    
+    const startOffset = (startMinute / 60) * hourHeight;
+    const durationMinutes = (endHour * 60 + endMinute) - (startHour * 60 + startMinute);
+    const height = Math.max((durationMinutes / 60) * hourHeight, 20); // Minimum 20px height
+    
+    return {
+      top: `${startOffset}px`,
+      height: `${height}px`,
+    };
   };
 
   const weekDayHeaders = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
@@ -561,37 +581,59 @@ const Agenda = () => {
 
               {/* Time Grid */}
               <ScrollArea className="flex-1">
-                <div className="grid grid-cols-8 gap-1">
-                  {hours.map((hour) => (
-                    <div key={hour} className="contents">
-                      <div className="w-14 text-xs text-muted-foreground text-right pr-2 h-12 flex items-start justify-end">
+                <div className="relative">
+                  {/* Time labels column */}
+                  <div className="absolute left-0 top-0 w-14">
+                    {hours.map((hour) => (
+                      <div key={hour} className="h-12 text-xs text-muted-foreground text-right pr-2 flex items-start justify-end">
                         {hour.toString().padStart(2, '0')}:00
                       </div>
-                      {weekDays.map((day) => {
-                        const hourEvents = getEventsForHour(day, hour);
-                        const isNow = isSameDay(day, new Date()) && new Date().getHours() === hour;
-                        return (
-                          <div
-                            key={`${day.toISOString()}-${hour}`}
-                            className={cn(
-                              "h-12 border-t border-border/50 relative",
-                              isNow && "bg-primary/5"
-                            )}
-                          >
-                            {hourEvents.map((event) => (
+                    ))}
+                  </div>
+                  
+                  {/* Grid with events */}
+                  <div className="grid grid-cols-7 gap-1 ml-14">
+                    {weekDays.map((day) => {
+                      const dayEvents = getEventsForHourRange(day);
+                      return (
+                        <div key={day.toISOString()} className="relative">
+                          {/* Hour cells */}
+                          {hours.map((hour) => {
+                            const isNow = isSameDay(day, new Date()) && new Date().getHours() === hour;
+                            return (
+                              <div
+                                key={hour}
+                                className={cn(
+                                  "h-12 border-t border-border/50",
+                                  isNow && "bg-primary/5"
+                                )}
+                              />
+                            );
+                          })}
+                          
+                          {/* Events overlay */}
+                          {dayEvents.map((event) => {
+                            const startHour = event.start.getHours();
+                            const style = getEventStyle(event, 48); // 48px = h-12
+                            return (
                               <div
                                 key={event.id}
-                                className="absolute inset-x-0 top-0 text-xs px-1 py-0.5 rounded truncate z-10"
-                                style={{ backgroundColor: event.color, color: 'white' }}
+                                className="absolute inset-x-0.5 text-xs px-1 py-0.5 rounded truncate z-10 overflow-hidden"
+                                style={{ 
+                                  backgroundColor: event.color, 
+                                  color: 'white',
+                                  top: `calc(${startHour * 48}px + ${style.top})`,
+                                  height: style.height,
+                                }}
                               >
                                 {event.title}
                               </div>
-                            ))}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </ScrollArea>
             </div>
@@ -618,37 +660,49 @@ const Agenda = () => {
 
               {/* Time Grid */}
               <ScrollArea className="flex-1">
-                <div className="space-y-0">
+                <div className="relative">
+                  {/* Hour rows */}
                   {hours.map((hour) => {
-                    const hourEvents = getEventsForHour(currentDate, hour);
                     const isNow = isSameDay(currentDate, new Date()) && new Date().getHours() === hour;
                     return (
                       <div key={hour} className="flex gap-2">
-                        <div className="w-14 text-xs text-muted-foreground text-right pr-2 h-16 flex items-start justify-end pt-1">
+                        <div className="w-14 text-xs text-muted-foreground text-right pr-2 h-16 flex items-start justify-end pt-1 flex-shrink-0">
                           {hour.toString().padStart(2, '0')}:00
                         </div>
                         <div
                           className={cn(
-                            "flex-1 h-16 border-t border-border/50 relative",
+                            "flex-1 h-16 border-t border-border/50",
                             isNow && "bg-primary/5"
                           )}
-                        >
-                          {hourEvents.map((event) => (
-                            <div
-                              key={event.id}
-                              className="absolute inset-x-1 top-1 text-sm px-2 py-1 rounded z-10"
-                              style={{ backgroundColor: event.color, color: 'white' }}
-                            >
-                              <span className="font-medium">{event.title}</span>
-                              <span className="ml-2 opacity-80">
-                                {format(event.start, 'HH:mm')}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
+                        />
                       </div>
                     );
                   })}
+                  
+                  {/* Events overlay */}
+                  <div className="absolute left-16 right-0 top-0">
+                    {getEventsForHourRange(currentDate).map((event) => {
+                      const startHour = event.start.getHours();
+                      const style = getEventStyle(event, 64); // 64px = h-16
+                      return (
+                        <div
+                          key={event.id}
+                          className="absolute inset-x-1 text-sm px-2 py-1 rounded z-10 overflow-hidden"
+                          style={{ 
+                            backgroundColor: event.color, 
+                            color: 'white',
+                            top: `calc(${startHour * 64}px + ${style.top})`,
+                            height: style.height,
+                          }}
+                        >
+                          <span className="font-medium">{event.title}</span>
+                          <span className="ml-2 opacity-80">
+                            {format(event.start, 'HH:mm')} - {format(event.end, 'HH:mm')}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </ScrollArea>
             </div>
@@ -661,8 +715,13 @@ const Agenda = () => {
           <div className="flex-1 bg-card rounded-2xl border border-border p-5 flex flex-col overflow-hidden min-h-0">
             {sidebarMode === 'create' ? (
               <>
-                {/* Create Event Header */}
-                <h3 className="text-lg font-semibold mb-4 flex-shrink-0">Nieuwe Gebeurtenis</h3>
+                {/* Create Event Header - Editable Title */}
+                <Input
+                  value={newEventTitle}
+                  onChange={(e) => setNewEventTitle(e.target.value)}
+                  className="text-lg font-semibold mb-4 flex-shrink-0 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
+                  placeholder="Nieuwe Gebeurtenis"
+                />
                 
                 <ScrollArea className="flex-1">
                   <div className="space-y-4 pr-2">
@@ -898,7 +957,21 @@ const Agenda = () => {
             <Button
               variant="outline"
               className="w-full h-12 rounded-xl flex-shrink-0"
-              onClick={() => setSidebarMode('events')}
+              onClick={() => {
+                // Reset form and go back to events view
+                setNewEventTitle('Nieuwe Gebeurtenis');
+                setNewEventDescription('');
+                setNewEventStartTime('13:20');
+                setNewEventEndTime('16:25');
+                setNewEventAllDay(false);
+                setNewEventRepeat('none');
+                setNewEventReminder('5min');
+                setNewEventColor('#10B981');
+                setNewEventInvitees('');
+                setIsCreatingEvent(false);
+                setCreatedEventId(null);
+                setSidebarMode('events');
+              }}
             >
               Annuleren
             </Button>
