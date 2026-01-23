@@ -344,7 +344,7 @@ const Taken = () => {
   if (!user) return null;
 
   return (
-    <div className="w-full">
+    <div className="w-full h-[calc(100vh-7rem)] flex flex-col overflow-hidden">
       {/* Header with navigation */}
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-4xl font-bold text-foreground capitalize">
@@ -382,7 +382,7 @@ const Taken = () => {
 
 
       {/* Tasks list */}
-      <div className="space-y-3 mb-6">
+      <div className="flex-1 space-y-3 overflow-y-auto pb-6">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -411,11 +411,11 @@ const Taken = () => {
                 onClick={(e) => handleToggleComplete(task, e)}
                 className="h-5 w-5 rounded-full border-2"
               />
-              <div className="flex-1 min-w-0 overflow-hidden">
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex-1 min-w-0 overflow-hidden">
+                <div className="flex items-center gap-2 min-w-0">
                   <p
                     className={cn(
-                      "font-medium",
+                      "font-medium truncate flex-shrink min-w-0",
                       task.completed
                         ? "line-through text-muted-foreground"
                         : isOverdue(task)
@@ -427,18 +427,18 @@ const Taken = () => {
                   </p>
                   {!task.completed && task.priority !== "regular" && (
                     <span className={cn(
-                      "text-xs font-medium px-2 py-0.5 rounded-full border",
+                      "text-xs font-medium px-2 py-0.5 rounded-full border flex-shrink-0",
                       priorityPillColors[task.priority]
                     )}>
                       {task.priority === "high" ? "Hoog" : "Laag"}
                     </span>
                   )}
                   {task.repeat_type && (
-                    <Repeat className="w-3.5 h-3.5 text-muted-foreground" />
+                    <Repeat className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
                   )}
                 </div>
                 {task.description && !task.completed && (
-                  <p className="text-sm text-muted-foreground mt-1 truncate">
+                  <p className="text-sm text-muted-foreground mt-1 truncate max-w-full">
                     {task.description}
                   </p>
                 )}
