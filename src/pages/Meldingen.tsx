@@ -225,9 +225,10 @@ const Meldingen = () => {
         })
         .eq("id", invitation.id);
 
-      // If accepted, copy the event to the invitee's calendar
+      // If accepted, copy the event to BOTH the invitee's calendar
       if (accept && invitation.event) {
-        await supabase.from("calendar_events").insert({
+        // Insert the event into the invitee's (current user's) calendar
+        const { error: insertError } = await supabase.from("calendar_events").insert({
           user_id: user.id,
           title: invitation.event.title,
           start_time: invitation.event.start_time,
@@ -238,16 +239,20 @@ const Meldingen = () => {
           description: invitation.event.description,
           location: invitation.event.location,
         });
+
+        if (insertError) {
+          console.error("Failed to insert event for invitee:", insertError);
+        }
       }
 
       // Send notification to the original inviter about the response
-      const { data: inviterProfile } = await supabase
+      const { data: responderProfile } = await supabase
         .from("profiles")
         .select("full_name, display_name")
         .eq("user_id", user.id)
         .single();
 
-      const responderName = inviterProfile?.display_name || inviterProfile?.full_name || "Iemand";
+      const responderName = responderProfile?.display_name || responderProfile?.full_name || "Iemand";
       const statusMessage = accept ? "geaccepteerd" : "afgewezen";
 
       await supabase.from("notifications").insert({
@@ -257,7 +262,7 @@ const Meldingen = () => {
         message: `${responderName} heeft je uitnodiging voor "${invitation.event?.title}" ${statusMessage}.`,
       });
 
-      toast.success(accept ? "Uitnodiging geaccepteerd" : "Uitnodiging afgewezen");
+      toast.success(accept ? "Uitnodiging geaccepteerd - afspraak toegevoegd aan je agenda" : "Uitnodiging afgewezen");
       loadEventInvitations();
     } catch (error) {
       console.error("Error responding to invitation:", error);
