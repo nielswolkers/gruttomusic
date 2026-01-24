@@ -1032,72 +1032,95 @@ const Agenda = () => {
               onMouseUp={() => handleDragEnd(48)}
               onMouseLeave={() => handleDragEnd(48)}
             >
-              <div className="grid grid-cols-8 gap-1 mb-2 flex-shrink-0">
-                <div className="w-14" />
-                {weekDays.map((day) => {
-                  const isToday = isSameDay(day, new Date());
-                  const isSelected = isSameDay(day, selectedDate);
-                  return (
-                    <button
-                      key={day.toISOString()}
-                      onClick={() => {
-                        setSelectedDate(day);
-                        setSidebarMode('events');
-                      }}
-                      className={cn(
-                        "text-center py-2 rounded-lg transition-all",
-                        isSelected && "bg-primary text-primary-foreground",
-                        !isSelected && isToday && "bg-primary/10",
-                        !isSelected && "hover:bg-muted/50"
-                      )}
-                    >
-                      <div className="text-xs text-muted-foreground font-medium">
-                        {format(day, 'EEE', { locale: nl })}
-                      </div>
-                      <div className={cn(
-                        "text-lg font-semibold",
-                        isToday && !isSelected && "text-primary"
-                      )}>
-                        {format(day, 'd')}
-                      </div>
-                    </button>
-                  );
-                })}
+              {/* Week header row - aligned with grid below */}
+              <div className="flex mb-2 flex-shrink-0">
+                <div className="w-14 flex-shrink-0" />
+                <div className="flex-1 grid grid-cols-7 gap-1">
+                  {weekDays.map((day) => {
+                    const isToday = isSameDay(day, new Date());
+                    const isSelected = isSameDay(day, selectedDate);
+                    return (
+                      <button
+                        key={day.toISOString()}
+                        onClick={() => {
+                          setSelectedDate(day);
+                          setSidebarMode('events');
+                        }}
+                        className={cn(
+                          "text-center py-2 rounded-lg transition-all",
+                          isSelected && "bg-primary text-primary-foreground",
+                          !isSelected && isToday && "bg-primary/10",
+                          !isSelected && "hover:bg-muted/50"
+                        )}
+                      >
+                        <div className="text-xs text-muted-foreground font-medium">
+                          {format(day, 'EEE', { locale: nl })}
+                        </div>
+                        <div className={cn(
+                          "text-lg font-semibold",
+                          isToday && !isSelected && "text-primary"
+                        )}>
+                          {format(day, 'd')}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="grid grid-cols-8 gap-1 mb-2 flex-shrink-0">
-                <div className="w-14 text-xs text-muted-foreground text-right pr-2 pt-1">Hele dag</div>
-                {weekDays.map((day) => {
-                  const allDayEvents = getAllDayEventsForDay(day);
-                  return (
-                    <div key={day.toISOString()} className="min-h-[32px]">
-                      {allDayEvents.slice(0, 2).map((event) => (
-                        <div
-                          key={event.id}
-                          className="text-xs px-1 py-0.5 rounded truncate mb-0.5 cursor-pointer hover:opacity-80"
-                          style={{ backgroundColor: event.color, color: 'white' }}
-                          onClick={(e) => handleEventClick(event, e)}
-                        >
-                          {event.title}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
+              {/* All-day events row - aligned with grid below */}
+              <div className="flex mb-2 flex-shrink-0">
+                <div className="w-14 flex-shrink-0 text-xs text-muted-foreground text-right pr-2 pt-1">Hele dag</div>
+                <div className="flex-1 grid grid-cols-7 gap-1">
+                  {weekDays.map((day) => {
+                    const allDayEvents = getAllDayEventsForDay(day);
+                    return (
+                      <div key={day.toISOString()} className="min-h-[32px]">
+                        {allDayEvents.slice(0, 2).map((event) => (
+                          <div
+                            key={event.id}
+                            className="text-xs px-1 py-0.5 rounded truncate mb-0.5 cursor-pointer hover:opacity-80"
+                            style={{ backgroundColor: event.color, color: 'white' }}
+                            onClick={(e) => handleEventClick(event, e)}
+                          >
+                            {event.title}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               <ScrollArea className="flex-1" ref={weekScrollRef}>
-                <div className="relative">
-                  <div className="absolute left-0 top-0 w-14">
+                <div className="relative flex">
+                  {/* Time labels column */}
+                  <div className="w-14 flex-shrink-0 relative">
                     {hours.map((hour) => (
                       <div key={hour} className="h-12 text-xs text-muted-foreground text-right pr-2 flex items-start justify-end">
                         {hour.toString().padStart(2, '0')}:00
                       </div>
                     ))}
+                    {/* Current time stamp on the left */}
+                    <div 
+                      className="absolute right-0 z-30 pointer-events-none"
+                      style={{ top: `${getCurrentTimePosition(48) - 10}px` }}
+                    >
+                      <div className="bg-destructive text-white text-xs font-medium px-1.5 py-0.5 rounded">
+                        {format(currentTime, 'HH:mm')}
+                      </div>
+                    </div>
                   </div>
                   
-                  <div className="grid grid-cols-7 gap-1 ml-14">
-                    {weekDays.map((day) => {
+                  {/* Days grid */}
+                  <div className="flex-1 grid grid-cols-7 gap-1 relative">
+                    {/* Continuous time indicator line spanning all days */}
+                    <div 
+                      className="absolute left-0 right-0 z-20 pointer-events-none h-0.5 bg-destructive/30"
+                      style={{ top: `${getCurrentTimePosition(48)}px` }}
+                    />
+                    
+                    {weekDays.map((day, dayIndex) => {
                       const dayEvents = getEventsForHourRange(day);
                       const isToday = isSameDay(day, new Date());
                       return (
@@ -1109,22 +1132,13 @@ const Agenda = () => {
                             />
                           ))}
                           
-                          {/* Current time indicator on ALL days - dimmer on non-current */}
-                          <div 
-                            className="absolute left-0 right-0 z-20 pointer-events-none"
-                            style={{ top: `${getCurrentTimePosition(48)}px` }}
-                          >
-                            <div className="flex items-center">
-                              <div className={cn(
-                                "w-2 h-2 rounded-full",
-                                isToday ? "bg-destructive" : "bg-destructive/30"
-                              )} />
-                              <div className={cn(
-                                "flex-1 h-0.5",
-                                isToday ? "bg-destructive" : "bg-destructive/30"
-                              )} />
-                            </div>
-                          </div>
+                          {/* Bright red line overlay only on current day */}
+                          {isToday && (
+                            <div 
+                              className="absolute left-0 right-0 z-21 pointer-events-none h-0.5 bg-destructive"
+                              style={{ top: `${getCurrentTimePosition(48)}px` }}
+                            />
+                          )}
                           
                           {dayEvents.map((event) => {
                             const startHour = event.start.getHours();
@@ -1190,25 +1204,28 @@ const Agenda = () => {
                 <div className="relative">
                   {hours.map((hour) => (
                     <div key={hour} className="flex gap-2">
-                      <div className="w-14 text-xs text-muted-foreground text-right pr-2 h-16 flex items-start justify-end pt-1 flex-shrink-0">
+                      <div className="w-14 text-xs text-muted-foreground text-right pr-2 h-16 flex items-start justify-end pt-1 flex-shrink-0 relative">
                         {hour.toString().padStart(2, '0')}:00
                       </div>
                       <div className="flex-1 h-16 border-t border-border/50" />
                     </div>
                   ))}
                   
-                  {/* Current time indicator for day view */}
-                  {isSameDay(currentDate, new Date()) && (
-                    <div 
-                      className="absolute left-16 right-0 z-20 pointer-events-none"
-                      style={{ top: `${getCurrentTimePosition(64)}px` }}
-                    >
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 rounded-full bg-destructive" />
-                        <div className="flex-1 h-0.5 bg-destructive" />
-                      </div>
+                  {/* Current time stamp on the left */}
+                  <div 
+                    className="absolute left-0 z-30 pointer-events-none"
+                    style={{ top: `${getCurrentTimePosition(64) - 10}px` }}
+                  >
+                    <div className="bg-destructive text-white text-xs font-medium px-1.5 py-0.5 rounded">
+                      {format(currentTime, 'HH:mm')}
                     </div>
-                  )}
+                  </div>
+                  
+                  {/* Current time indicator line for day view */}
+                  <div 
+                    className="absolute left-14 right-0 z-20 pointer-events-none h-0.5 bg-destructive"
+                    style={{ top: `${getCurrentTimePosition(64)}px` }}
+                  />
                   
                   <div className="absolute left-16 right-0 top-0">
                     {getEventsForHourRange(currentDate).map((event) => {
@@ -1303,6 +1320,25 @@ const Agenda = () => {
                     )}
                   </div>
                 </ScrollArea>
+
+                {/* Search bar at bottom while in search mode */}
+                <div className="mt-4 pt-4 border-t border-border flex-shrink-0">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        if (!e.target.value.trim()) {
+                          setSidebarMode('events');
+                        }
+                      }}
+                      placeholder="Zoeken in Agenda"
+                      className="pl-9 h-10"
+                      autoFocus
+                    />
+                  </div>
+                </div>
               </>
             ) : sidebarMode === 'view' && selectedEvent ? (
               <>
