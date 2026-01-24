@@ -102,8 +102,8 @@ export function GroupMaterials({ groupId }: GroupMaterialsProps) {
 
     setUploading(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const filePath = `group-materials/${groupId}/${Date.now()}-${file.name}`;
+      // Path must start with user.id to match storage RLS policy
+      const filePath = `${user.id}/group-materials/${groupId}/${Date.now()}-${file.name}`;
 
       const { error: uploadError } = await supabase.storage
         .from('user-files')
