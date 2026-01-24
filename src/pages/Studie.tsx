@@ -519,10 +519,10 @@ export default function Studie() {
     try {
       let avatarUrl: string | null = null;
 
-      // Upload avatar if selected
+      // Upload avatar if selected - path must start with user.id to match RLS policy
       if (newGroupAvatarFile) {
         const fileExt = newGroupAvatarFile.name.split('.').pop();
-        const filePath = `group-avatars/${Date.now()}.${fileExt}`;
+        const filePath = `${user.id}/group-avatars/${Date.now()}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from('user-files')
@@ -611,7 +611,8 @@ export default function Studie() {
     setUploadingGroupAvatar(true);
     try {
       const fileExt = file.name.split('.').pop();
-      const filePath = `group-avatars/${selectedGroup.id}-${Date.now()}.${fileExt}`;
+      // Path must start with user.id to match storage RLS policy
+      const filePath = `${user!.id}/group-avatars/${selectedGroup.id}-${Date.now()}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('user-files')

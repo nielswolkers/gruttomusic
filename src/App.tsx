@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/toaster";
+import Notities from "./pages/Notities";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -64,7 +65,7 @@ function AppRoutes() {
         <Route path="/bestanden" element={<Bestanden />} />
         <Route path="/bestanden/folder/:folderId" element={<FolderView />} />
         <Route path="/bestanden/preview/:fileId" element={<FilePreview />} />
-        <Route path="/notities" element={<PlaceholderPage />} />
+        <Route path="/notities" element={<Notities />} />
         <Route path="/ontdekken" element={<PlaceholderPage />} />
         <Route path="/meldingen" element={<Meldingen />} />
         <Route path="/account" element={<Account />} />
