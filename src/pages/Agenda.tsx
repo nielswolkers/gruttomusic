@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Plus, Monitor, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Monitor, Search, MapPin, Calendar as CalendarIcon } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, parseISO, addWeeks, subWeeks, addDays, subDays } from "date-fns";
 import { nl } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,6 +32,7 @@ interface CalendarEvent {
   allDay: boolean;
   source: 'task' | 'zermelo' | 'outlook' | 'google' | 'local';
   color: string;
+  eventType?: string;
 }
 
 interface Task {
@@ -40,6 +41,17 @@ interface Task {
   due_date: string;
   due_time: string | null;
   completed: boolean;
+  add_to_calendar: boolean;
+}
+
+interface CalendarEventDB {
+  id: string;
+  title: string;
+  start_time: string;
+  end_time: string;
+  all_day: boolean;
+  color: string;
+  event_type: string;
 }
 
 interface CalendarConnection {
@@ -124,6 +136,15 @@ const EVENT_COLORS = [
   { name: 'gray', value: '#9CA3AF' },
 ];
 
+const EVENT_TYPES = [
+  { value: 'project', label: 'Project' },
+  { value: 'huiswerk', label: 'Huiswerk' },
+  { value: 'proefwerk', label: 'Proefwerk' },
+  { value: 'schoolexamen', label: 'Schoolexamen' },
+  { value: 'studietijd', label: 'Studietijd' },
+  { value: 'anders', label: 'Anders' },
+];
+
 const Agenda = () => {
   const { user } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -132,10 +153,10 @@ const Agenda = () => {
   const [loading, setLoading] = useState(true);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('maand');
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('events');
-  const [newEventType, setNewEventType] = useState('anders');
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentEventId, setCurrentEventId] = useState<string | null>(null);
 
-  // Event creation form state
+  // Event creation form state (for 'create' mode - no invites)
   const [newEventTitle, setNewEventTitle] = useState('Nieuwe Gebeurtenis');
   const [newEventStartDate, setNewEventStartDate] = useState('');
   const [newEventEndDate, setNewEventEndDate] = useState('');
@@ -146,7 +167,21 @@ const Agenda = () => {
   const [newEventReminder, setNewEventReminder] = useState('5min');
   const [newEventDescription, setNewEventDescription] = useState('');
   const [newEventColor, setNewEventColor] = useState('#10B981');
-  const [newEventInvitees, setNewEventInvitees] = useState<string[]>([]);
+  const [newEventType, setNewEventType] = useState('anders');
+  const [newEventLocation, setNewEventLocation] = useState('');
+
+  // Meeting creation form state (for 'meeting' mode - with invites)
+  const [meetingTitle, setMeetingTitle] = useState('Nieuwe Afspraak');
+  const [meetingStartDate, setMeetingStartDate] = useState('');
+  const [meetingEndDate, setMeetingEndDate] = useState('');
+  const [meetingStartTime, setMeetingStartTime] = useState('13:20');
+  const [meetingEndTime, setMeetingEndTime] = useState('16:25');
+  const [meetingAllDay, setMeetingAllDay] = useState(false);
+  const [meetingDescription, setMeetingDescription] = useState('');
+  const [meetingColor, setMeetingColor] = useState('#3B82F6');
+  const [meetingLocation, setMeetingLocation] = useState('');
+  const [meetingInvitees, setMeetingInvitees] = useState<string[]>([]);
+  const [currentMeetingId, setCurrentMeetingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -158,6 +193,8 @@ const Agenda = () => {
     const dateStr = format(selectedDate, 'yyyy-MM-dd');
     setNewEventStartDate(dateStr);
     setNewEventEndDate(dateStr);
+    setMeetingStartDate(dateStr);
+    setMeetingEndDate(dateStr);
   }, [selectedDate]);
 
   // Auto-save event when any field changes (if in create mode and has a title)
@@ -168,46 +205,145 @@ const Agenda = () => {
       }, 1000);
       return () => clearTimeout(saveTimer);
     }
-  }, [newEventTitle, newEventStartTime, newEventEndTime, newEventAllDay, newEventColor, newEventDescription, newEventInvitees, newEventRepeat, sidebarMode]);
+  }, [newEventTitle, newEventStartTime, newEventEndTime, newEventAllDay, newEventColor, newEventDescription, newEventType, newEventLocation, newEventStartDate, sidebarMode]);
+
+  // Auto-save meeting when any field changes
+  useEffect(() => {
+    if (sidebarMode === 'meeting' && meetingTitle.trim() && meetingTitle !== 'Nieuwe Afspraak') {
+      const saveTimer = setTimeout(() => {
+        saveMeeting();
+      }, 1000);
+      return () => clearTimeout(saveTimer);
+    }
+  }, [meetingTitle, meetingStartTime, meetingEndTime, meetingAllDay, meetingColor, meetingDescription, meetingLocation, meetingStartDate, meetingInvitees, sidebarMode]);
 
   const saveEvent = async () => {
     if (!user || !newEventTitle.trim()) return;
 
     try {
-      // Create as a task with calendar flag
       const startDate = newEventStartDate || format(selectedDate, 'yyyy-MM-dd');
-      
-      const { error } = await supabase.from("tasks").insert({
-        user_id: user.id,
-        title: newEventTitle.trim(),
-        description: newEventDescription || null,
-        priority: 'regular',
-        due_date: startDate,
-        due_time: newEventAllDay ? null : newEventStartTime,
-        add_to_calendar: true,
-        repeat_type: newEventRepeat === 'none' ? null : newEventRepeat,
-        repeat_interval: 1,
-        repeat_end_date: null,
-      });
+      const startDateTime = newEventAllDay 
+        ? new Date(`${startDate}T00:00:00`) 
+        : new Date(`${startDate}T${newEventStartTime}:00`);
+      const endDateTime = newEventAllDay 
+        ? new Date(`${startDate}T23:59:59`) 
+        : new Date(`${startDate}T${newEventEndTime}:00`);
 
-      if (error) throw error;
+      if (currentEventId) {
+        // Update existing event
+        const { error } = await supabase.from("calendar_events").update({
+          title: newEventTitle.trim(),
+          description: newEventDescription || null,
+          start_time: startDateTime.toISOString(),
+          end_time: endDateTime.toISOString(),
+          all_day: newEventAllDay,
+          color: newEventColor,
+          event_type: newEventType,
+          location: newEventLocation || null,
+          repeat_type: newEventRepeat === 'none' ? null : newEventRepeat,
+          reminder_minutes: newEventReminder === 'none' ? null : parseInt(newEventReminder),
+        }).eq('id', currentEventId);
 
-      // Send notifications to invitees
-      if (newEventInvitees.length > 0) {
-        const notifications = newEventInvitees.map(inviteeId => ({
-          recipient_id: inviteeId,
-          sender_id: user.id,
-          type: 'event_invite',
-          message: `Je bent uitgenodigd voor: ${newEventTitle}`,
-        }));
+        if (error) throw error;
+      } else {
+        // Create new event
+        const { data, error } = await supabase.from("calendar_events").insert({
+          user_id: user.id,
+          title: newEventTitle.trim(),
+          description: newEventDescription || null,
+          start_time: startDateTime.toISOString(),
+          end_time: endDateTime.toISOString(),
+          all_day: newEventAllDay,
+          color: newEventColor,
+          event_type: newEventType,
+          location: newEventLocation || null,
+          repeat_type: newEventRepeat === 'none' ? null : newEventRepeat,
+          reminder_minutes: newEventReminder === 'none' ? null : parseInt(newEventReminder),
+        }).select().single();
 
-        await supabase.from("notifications").insert(notifications);
+        if (error) throw error;
+        if (data) setCurrentEventId(data.id);
       }
 
-      // Reload events after saving
       loadEvents();
     } catch (error) {
       console.error("Failed to save event:", error);
+    }
+  };
+
+  const saveMeeting = async () => {
+    if (!user || !meetingTitle.trim()) return;
+
+    try {
+      const startDate = meetingStartDate || format(selectedDate, 'yyyy-MM-dd');
+      const startDateTime = meetingAllDay 
+        ? new Date(`${startDate}T00:00:00`) 
+        : new Date(`${startDate}T${meetingStartTime}:00`);
+      const endDateTime = meetingAllDay 
+        ? new Date(`${startDate}T23:59:59`) 
+        : new Date(`${startDate}T${meetingEndTime}:00`);
+
+      if (currentMeetingId) {
+        // Update existing meeting
+        const { error } = await supabase.from("calendar_events").update({
+          title: meetingTitle.trim(),
+          description: meetingDescription || null,
+          start_time: startDateTime.toISOString(),
+          end_time: endDateTime.toISOString(),
+          all_day: meetingAllDay,
+          color: meetingColor,
+          event_type: 'meeting',
+          location: meetingLocation || null,
+        }).eq('id', currentMeetingId);
+
+        if (error) throw error;
+
+        // Update invitations
+        await supabase.from("event_invitations").delete().eq('event_id', currentMeetingId);
+        
+        if (meetingInvitees.length > 0) {
+          const invitations = meetingInvitees.map(inviteeId => ({
+            event_id: currentMeetingId,
+            inviter_id: user.id,
+            invitee_id: inviteeId,
+            status: 'pending',
+          }));
+          await supabase.from("event_invitations").insert(invitations);
+        }
+      } else {
+        // Create new meeting
+        const { data, error } = await supabase.from("calendar_events").insert({
+          user_id: user.id,
+          title: meetingTitle.trim(),
+          description: meetingDescription || null,
+          start_time: startDateTime.toISOString(),
+          end_time: endDateTime.toISOString(),
+          all_day: meetingAllDay,
+          color: meetingColor,
+          event_type: 'meeting',
+          location: meetingLocation || null,
+        }).select().single();
+
+        if (error) throw error;
+        if (data) {
+          setCurrentMeetingId(data.id);
+
+          // Send invitations
+          if (meetingInvitees.length > 0) {
+            const invitations = meetingInvitees.map(inviteeId => ({
+              event_id: data.id,
+              inviter_id: user.id,
+              invitee_id: inviteeId,
+              status: 'pending',
+            }));
+            await supabase.from("event_invitations").insert(invitations);
+          }
+        }
+      }
+
+      loadEvents();
+    } catch (error) {
+      console.error("Failed to save meeting:", error);
     }
   };
 
@@ -216,12 +352,30 @@ const Agenda = () => {
     setLoading(true);
 
     try {
-      // Load tasks
+      // Load calendar_events
+      const { data: calendarEvents } = await supabase
+        .from('calendar_events')
+        .select('id, title, start_time, end_time, all_day, color, event_type')
+        .eq('user_id', user.id);
+
+      const localEvents: CalendarEvent[] = (calendarEvents || []).map((event: CalendarEventDB) => ({
+        id: `local-${event.id}`,
+        title: event.title,
+        start: new Date(event.start_time),
+        end: new Date(event.end_time),
+        allDay: event.all_day,
+        source: 'local' as const,
+        color: event.color,
+        eventType: event.event_type,
+      }));
+
+      // Load tasks that are synced to calendar
       const { data: tasks } = await supabase
         .from('tasks')
-        .select('id, title, due_date, due_time, completed')
+        .select('id, title, due_date, due_time, completed, add_to_calendar')
         .eq('user_id', user.id)
-        .eq('completed', false);
+        .eq('completed', false)
+        .eq('add_to_calendar', true);
 
       const taskEvents: CalendarEvent[] = (tasks || []).map((task: Task) => {
         const date = parseISO(task.due_date);
@@ -326,7 +480,7 @@ const Agenda = () => {
         }
       }
 
-      setEvents([...taskEvents, ...icsEvents, ...googleEvents]);
+      setEvents([...localEvents, ...taskEvents, ...icsEvents, ...googleEvents]);
     } catch (error) {
       console.error('Failed to load events:', error);
     } finally {
@@ -419,10 +573,10 @@ const Agenda = () => {
     return format(currentDate, 'MMMM yyyy', { locale: nl });
   };
 
-  const calculateDuration = () => {
-    if (newEventAllDay) return '';
-    const [startH, startM] = newEventStartTime.split(':').map(Number);
-    const [endH, endM] = newEventEndTime.split(':').map(Number);
+  const calculateDuration = (startTime: string, endTime: string, allDay: boolean) => {
+    if (allDay) return '';
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
     const startMins = startH * 60 + startM;
     const endMins = endH * 60 + endM;
     const diffMins = endMins - startMins;
@@ -432,7 +586,12 @@ const Agenda = () => {
     return `(${hours}h ${mins}m)`;
   };
 
-  const resetEventForm = () => {
+  const resetEventForm = async () => {
+    // Delete the event if it was being created
+    if (currentEventId) {
+      await supabase.from("calendar_events").delete().eq('id', currentEventId);
+      loadEvents();
+    }
     setNewEventTitle('Nieuwe Gebeurtenis');
     setNewEventDescription('');
     setNewEventStartTime('13:20');
@@ -441,7 +600,28 @@ const Agenda = () => {
     setNewEventRepeat('none');
     setNewEventReminder('5min');
     setNewEventColor('#10B981');
-    setNewEventInvitees([]);
+    setNewEventType('anders');
+    setNewEventLocation('');
+    setCurrentEventId(null);
+    setSidebarMode('events');
+  };
+
+  const resetMeetingForm = async () => {
+    // Delete the meeting if it was being created
+    if (currentMeetingId) {
+      await supabase.from("event_invitations").delete().eq('event_id', currentMeetingId);
+      await supabase.from("calendar_events").delete().eq('id', currentMeetingId);
+      loadEvents();
+    }
+    setMeetingTitle('Nieuwe Afspraak');
+    setMeetingDescription('');
+    setMeetingStartTime('13:20');
+    setMeetingEndTime('16:25');
+    setMeetingAllDay(false);
+    setMeetingColor('#3B82F6');
+    setMeetingLocation('');
+    setMeetingInvitees([]);
+    setCurrentMeetingId(null);
     setSidebarMode('events');
   };
 
@@ -733,9 +913,9 @@ const Agenda = () => {
           )}
         </div>
 
-        {/* Right Sidebar - Fixed Width */}
-        <div className="w-80 flex flex-col gap-4 overflow-hidden flex-shrink-0">
-          {/* Events/Create Card */}
+        {/* Right Sidebar - Increased Width */}
+        <div className="w-96 flex flex-col gap-4 overflow-hidden flex-shrink-0">
+          {/* Events/Create/Meeting Card */}
           <div className="flex-1 bg-card rounded-2xl border border-border p-4 flex flex-col overflow-hidden min-h-0">
             {sidebarMode === 'create' ? (
               <>
@@ -748,22 +928,39 @@ const Agenda = () => {
                 />
                 
                 <ScrollArea className="flex-1 -mx-1 px-1">
-                  <div className="space-y-3">
+                  <div className="space-y-3 pr-2">
+                    {/* Event Type */}
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Type</Label>
+                      <Select value={newEventType} onValueChange={setNewEventType}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {EVENT_TYPES.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     {/* Date */}
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground">Datum</Label>
                       <Input
-                        type="text"
-                        value={format(new Date(newEventStartDate || selectedDate), 'd MMMM yyyy', { locale: nl })}
+                        type="date"
+                        value={newEventStartDate}
+                        onChange={(e) => setNewEventStartDate(e.target.value)}
                         className="h-8 text-sm"
-                        readOnly
                       />
                     </div>
 
                     {/* Time */}
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground">Tijd</Label>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-2">
                         <Input
                           type="time"
                           value={newEventStartTime}
@@ -780,7 +977,7 @@ const Agenda = () => {
                           disabled={newEventAllDay}
                         />
                       </div>
-                      <span className="text-xs text-muted-foreground">{calculateDuration()}</span>
+                      <span className="text-xs text-muted-foreground">{calculateDuration(newEventStartTime, newEventEndTime, newEventAllDay)}</span>
                     </div>
 
                     {/* All Day Toggle */}
@@ -808,21 +1005,18 @@ const Agenda = () => {
                       </Select>
                     </div>
 
-                    {/* Reminder */}
+                    {/* Location */}
                     <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Herinneringen</Label>
-                      <Select value={newEventReminder} onValueChange={setNewEventReminder}>
-                        <SelectTrigger className="h-8 text-sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Geen</SelectItem>
-                          <SelectItem value="5min">5 minuten</SelectItem>
-                          <SelectItem value="15min">15 minuten</SelectItem>
-                          <SelectItem value="30min">30 minuten</SelectItem>
-                          <SelectItem value="1hour">1 uur</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Label className="text-xs text-muted-foreground">Locatie</Label>
+                      <div className="relative">
+                        <MapPin className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                        <Input
+                          value={newEventLocation}
+                          onChange={(e) => setNewEventLocation(e.target.value)}
+                          className="h-8 text-sm pl-7"
+                          placeholder="Voeg locatie toe"
+                        />
+                      </div>
                     </div>
 
                     {/* Description */}
@@ -856,7 +1050,7 @@ const Agenda = () => {
 
                     {/* Calendar Selection */}
                     <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Agenda's</Label>
+                      <Label className="text-xs text-muted-foreground">Agenda</Label>
                       <Select defaultValue="personal">
                         <SelectTrigger className="h-8 text-sm">
                           <SelectValue />
@@ -866,14 +1060,127 @@ const Agenda = () => {
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+                </ScrollArea>
+              </>
+            ) : sidebarMode === 'meeting' ? (
+              <>
+                {/* Meeting Header - Editable Title */}
+                <Input
+                  value={meetingTitle}
+                  onChange={(e) => setMeetingTitle(e.target.value)}
+                  className="text-lg font-semibold mb-3 flex-shrink-0 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
+                  placeholder="Nieuwe Afspraak"
+                />
+                
+                <ScrollArea className="flex-1 -mx-1 px-1">
+                  <div className="space-y-3 pr-2">
+                    {/* Date */}
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Datum</Label>
+                      <Input
+                        type="date"
+                        value={meetingStartDate}
+                        onChange={(e) => setMeetingStartDate(e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+
+                    {/* Time */}
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Tijd</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="time"
+                          value={meetingStartTime}
+                          onChange={(e) => setMeetingStartTime(e.target.value)}
+                          className="h-8 text-sm flex-1"
+                          disabled={meetingAllDay}
+                        />
+                        <span className="text-muted-foreground text-xs">-</span>
+                        <Input
+                          type="time"
+                          value={meetingEndTime}
+                          onChange={(e) => setMeetingEndTime(e.target.value)}
+                          className="h-8 text-sm flex-1"
+                          disabled={meetingAllDay}
+                        />
+                      </div>
+                      <span className="text-xs text-muted-foreground">{calculateDuration(meetingStartTime, meetingEndTime, meetingAllDay)}</span>
+                    </div>
+
+                    {/* All Day Toggle */}
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs text-muted-foreground">Hele dag</Label>
+                      <Switch
+                        checked={meetingAllDay}
+                        onCheckedChange={setMeetingAllDay}
+                      />
+                    </div>
 
                     {/* Invitees */}
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground">Uitnodigen</Label>
                       <UserInviteSearch
-                        invitees={newEventInvitees}
-                        onInviteesChange={setNewEventInvitees}
+                        invitees={meetingInvitees}
+                        onInviteesChange={setMeetingInvitees}
                       />
+                    </div>
+
+                    {/* Location */}
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Locatie</Label>
+                      <div className="relative">
+                        <MapPin className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                        <Input
+                          value={meetingLocation}
+                          onChange={(e) => setMeetingLocation(e.target.value)}
+                          className="h-8 text-sm pl-7"
+                          placeholder="Voeg locatie toe"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Description */}
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Beschrijving</Label>
+                      <Textarea
+                        value={meetingDescription}
+                        onChange={(e) => setMeetingDescription(e.target.value)}
+                        className="min-h-[60px] text-sm resize-none"
+                        placeholder=""
+                      />
+                    </div>
+
+                    {/* Color */}
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Kleur</Label>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {EVENT_COLORS.map((color) => (
+                          <button
+                            key={color.name}
+                            onClick={() => setMeetingColor(color.value)}
+                            className={cn(
+                              "w-5 h-5 rounded-full transition-all",
+                              meetingColor === color.value && "ring-2 ring-offset-1 ring-primary"
+                            )}
+                            style={{ backgroundColor: color.value }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Calendar Selection */}
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Agenda</Label>
+                      <Select defaultValue="personal">
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="personal">Persoonlijk</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </ScrollArea>
@@ -962,6 +1269,7 @@ const Agenda = () => {
               <Button
                 variant="outline"
                 className="w-full h-12 justify-start gap-3 rounded-xl"
+                onClick={() => setSidebarMode('meeting')}
               >
                 <Monitor className="w-5 h-5" />
                 Maak een afspraak
@@ -975,6 +1283,17 @@ const Agenda = () => {
               variant="outline"
               className="w-full h-12 rounded-xl flex-shrink-0"
               onClick={resetEventForm}
+            >
+              Annuleren
+            </Button>
+          )}
+
+          {/* Back button in meeting mode */}
+          {sidebarMode === 'meeting' && (
+            <Button
+              variant="outline"
+              className="w-full h-12 rounded-xl flex-shrink-0"
+              onClick={resetMeetingForm}
             >
               Annuleren
             </Button>

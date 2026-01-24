@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Users, X, Check, UserPlus } from "lucide-react";
+import { Plus, Users, X, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -46,6 +46,7 @@ export default function Studie() {
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<Profile[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -59,17 +60,25 @@ export default function Studie() {
 
     try {
       // Load groups where user is owner
-      const { data: ownedGroups } = await supabase
+      const { data: ownedGroups, error: ownedError } = await supabase
         .from("study_groups")
         .select("*")
         .eq("owner_id", user.id);
 
+      if (ownedError) {
+        console.error("Error loading owned groups:", ownedError);
+      }
+
       // Load groups where user is accepted member
-      const { data: memberGroups } = await supabase
+      const { data: memberGroups, error: memberError } = await supabase
         .from("group_members")
         .select("group_id")
         .eq("user_id", user.id)
         .eq("status", "accepted");
+
+      if (memberError) {
+        console.error("Error loading member groups:", memberError);
+      }
 
       const memberGroupIds = memberGroups?.map(m => m.group_id) || [];
       
@@ -174,6 +183,7 @@ export default function Studie() {
   const createGroup = async () => {
     if (!user || !newGroupName.trim()) return;
 
+    setIsCreating(true);
     try {
       // Create the group
       const { data: group, error: groupError } = await supabase
@@ -185,10 +195,18 @@ export default function Studie() {
         .select()
         .single();
 
-      if (groupError) throw groupError;
+      if (groupError) {
+        console.error("Group creation error:", groupError);
+        throw groupError;
+      }
 
-      // Add selected users as pending members
+      if (!group) {
+        throw new Error("No group data returned");
+      }
+
+      // Add selected users as pending members and send notifications
       if (selectedUsers.length > 0) {
+        // Insert group members
         const membersToInsert = selectedUsers.map(u => ({
           group_id: group.id,
           user_id: u.user_id,
@@ -200,7 +218,10 @@ export default function Studie() {
           .from("group_members")
           .insert(membersToInsert);
 
-        if (membersError) throw membersError;
+        if (membersError) {
+          console.error("Members insertion error:", membersError);
+          // Don't throw here, group was created successfully
+        }
 
         // Send notifications to invited users
         const notifications = selectedUsers.map(u => ({
@@ -210,7 +231,10 @@ export default function Studie() {
           message: `Je bent uitgenodigd voor de studiegroep "${newGroupName.trim()}"`,
         }));
 
-        await supabase.from("notifications").insert(notifications);
+        const { error: notifError } = await supabase.from("notifications").insert(notifications);
+        if (notifError) {
+          console.error("Notifications error:", notifError);
+        }
       }
 
       toast.success("Groep aangemaakt!");
@@ -218,9 +242,11 @@ export default function Studie() {
       setSelectedUsers([]);
       setCreateDialogOpen(false);
       loadGroups();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to create group:", error);
-      toast.error("Kon groep niet aanmaken");
+      toast.error(`Kon groep niet aanmaken: ${error.message || 'Onbekende fout'}`);
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -319,9 +345,9 @@ export default function Studie() {
                 <Button
                   className="flex-1"
                   onClick={createGroup}
-                  disabled={!newGroupName.trim()}
+                  disabled={!newGroupName.trim() || isCreating}
                 >
-                  Aanmaken
+                  {isCreating ? "Aanmaken..." : "Aanmaken"}
                 </Button>
               </div>
             </div>
