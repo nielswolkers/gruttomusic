@@ -15,6 +15,7 @@ import Account from "./pages/Account";
 import Taken from "./pages/Taken";
 import Agenda from "./pages/Agenda";
 import PlaceholderPage from "./pages/PlaceholderPage";
+import Studie from "./pages/Studie";
 import Callback from "./pages/Callback";
 import GoogleCallback from "./pages/GoogleCallback";
 import NotFound from "./pages/NotFound";
@@ -56,7 +57,7 @@ function AppRoutes() {
       }>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/agenda" element={<Agenda />} />
-        <Route path="/studie" element={<PlaceholderPage />} />
+        <Route path="/studie" element={<Studie />} />
         <Route path="/cijfers" element={<PlaceholderPage />} />
         <Route path="/taken" element={<Taken />} />
         <Route path="/bestanden" element={<Bestanden />} />

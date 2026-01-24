@@ -15,11 +15,11 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { UserInviteSearch } from "@/components/agenda/UserInviteSearch";
 
-type TimeFilter = 'vandaag' | 'week' | 'maand';
-type SidebarMode = 'events' | 'create';
+type TimeFilter = 'dag' | 'week' | 'maand';
+type SidebarMode = 'events' | 'create' | 'meeting';
 
 const filterTitles: Record<TimeFilter, string> = {
-  vandaag: 'Vandaag',
+  dag: 'Vandaag',
   week: 'Deze week',
   maand: 'Deze maand',
 };
@@ -132,6 +132,7 @@ const Agenda = () => {
   const [loading, setLoading] = useState(true);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('maand');
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('events');
+  const [newEventType, setNewEventType] = useState('anders');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Event creation form state
@@ -334,7 +335,7 @@ const Agenda = () => {
   };
 
   const navigatePrevious = () => {
-    if (timeFilter === 'vandaag') {
+    if (timeFilter === 'dag') {
       setCurrentDate(subDays(currentDate, 1));
       setSelectedDate(subDays(currentDate, 1));
     } else if (timeFilter === 'week') {
@@ -345,7 +346,7 @@ const Agenda = () => {
   };
 
   const navigateNext = () => {
-    if (timeFilter === 'vandaag') {
+    if (timeFilter === 'dag') {
       setCurrentDate(addDays(currentDate, 1));
       setSelectedDate(addDays(currentDate, 1));
     } else if (timeFilter === 'week') {
@@ -410,7 +411,7 @@ const Agenda = () => {
   const weekDayHeaders = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
 
   const getNavigationTitle = () => {
-    if (timeFilter === 'vandaag') {
+    if (timeFilter === 'dag') {
       return format(currentDate, 'd MMMM yyyy', { locale: nl });
     } else if (timeFilter === 'week') {
       return `${format(weekStart, 'd', { locale: nl })} - ${format(weekEnd, 'd MMMM yyyy', { locale: nl })}`;
@@ -451,7 +452,7 @@ const Agenda = () => {
         <h1 className="text-4xl font-bold text-foreground">{filterTitles[timeFilter]}</h1>
         
         <div className="flex bg-muted rounded-lg p-1 gap-0.5">
-          {(['vandaag', 'week', 'maand'] as TimeFilter[]).map((filter) => (
+          {(['dag', 'week', 'maand'] as TimeFilter[]).map((filter) => (
             <button
               key={filter}
               onClick={() => setTimeFilter(filter)}
@@ -461,7 +462,7 @@ const Agenda = () => {
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              {filter === 'vandaag' ? 'Vandaag' : filter === 'week' ? 'Week' : 'Maand'}
+              {filter === 'dag' ? 'Dag' : filter === 'week' ? 'Week' : 'Maand'}
             </button>
           ))}
         </div>
@@ -667,7 +668,7 @@ const Agenda = () => {
           )}
 
           {/* Day View */}
-          {timeFilter === 'vandaag' && (
+          {timeFilter === 'dag' && (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
               <div className="flex gap-2 mb-4 flex-shrink-0">
                 <div className="w-14 text-xs text-muted-foreground text-right pr-2 pt-1">Hele dag</div>
@@ -733,7 +734,7 @@ const Agenda = () => {
         </div>
 
         {/* Right Sidebar - Fixed Width */}
-        <div className="w-72 flex flex-col gap-4 overflow-hidden flex-shrink-0">
+        <div className="w-80 flex flex-col gap-4 overflow-hidden flex-shrink-0">
           {/* Events/Create Card */}
           <div className="flex-1 bg-card rounded-2xl border border-border p-4 flex flex-col overflow-hidden min-h-0">
             {sidebarMode === 'create' ? (
@@ -963,7 +964,7 @@ const Agenda = () => {
                 className="w-full h-12 justify-start gap-3 rounded-xl"
               >
                 <Monitor className="w-5 h-5" />
-                Plan een meeting
+                Maak een afspraak
               </Button>
             </div>
           )}

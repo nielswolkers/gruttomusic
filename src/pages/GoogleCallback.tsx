@@ -1,14 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { getGoogleRedirectUri } from "@/auth/googleAuth";
 
 const GoogleCallback = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [processing, setProcessing] = useState(true);
 
   useEffect(() => {
@@ -29,6 +27,33 @@ const GoogleCallback = () => {
         return;
       }
 
+      // Wait for auth session to be ready
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session?.user) {
+        // Try to wait for session to be established
+        let attempts = 0;
+        const maxAttempts = 10;
+        let currentSession = session;
+        
+        while (!currentSession?.user && attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const { data } = await supabase.auth.getSession();
+          currentSession = data.session;
+          attempts++;
+        }
+        
+        if (!currentSession?.user) {
+          toast.error("Je moet ingelogd zijn om Google Agenda te koppelen");
+          // Store the code temporarily to complete after login
+          localStorage.setItem("pending_google_code", code);
+          navigate("/auth");
+          return;
+        }
+      }
+
+      const user = session?.user || (await supabase.auth.getSession()).data.session?.user;
+      
       if (!user) {
         toast.error("Je moet ingelogd zijn");
         navigate("/auth");
@@ -53,7 +78,9 @@ const GoogleCallback = () => {
         );
 
         if (!response.ok) {
-          throw new Error("Kon tokens niet ophalen");
+          const errorData = await response.json().catch(() => ({}));
+          console.error("Token exchange error:", errorData);
+          throw new Error(errorData.error || "Kon tokens niet ophalen");
         }
 
         const data = await response.json();
@@ -102,6 +129,7 @@ const GoogleCallback = () => {
         }
 
         localStorage.removeItem("google_state");
+        localStorage.removeItem("pending_google_code");
         toast.success("Google Agenda gekoppeld!");
         navigate("/account");
       } catch (error) {
@@ -112,7 +140,7 @@ const GoogleCallback = () => {
     };
 
     handleCallback();
-  }, [searchParams, navigate, user]);
+  }, [searchParams, navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
