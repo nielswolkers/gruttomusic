@@ -4,16 +4,27 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { User, Mail, LogOut, Trash2, Camera, Clock } from "lucide-react";
+import { User, Mail, LogOut, Trash2, Camera, Clock, Image } from "lucide-react";
 import { getStoredAccessToken, logout as spotifyLogout, refreshAccessToken, redirectToSpotifyAuth } from "@/auth/spotifyAuth";
 import { getUserProfile } from "@/api/spotifyApi";
 import CalendarIntegrations from "@/components/account/CalendarIntegrations";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Slider } from "@/components/ui/slider";
+
+interface ProfileData {
+  full_name: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  banner_url: string | null;
+  study_goal_minutes: number;
+}
 
 const Account = () => {
   const navigate = useNavigate();
@@ -22,12 +33,14 @@ const Account = () => {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [profile, setProfile] = useState<{ full_name: string; username: string; display_name: string | null; avatar_url: string | null; study_goal_minutes: number } | null>(null);
-  const [formData, setFormData] = useState({ full_name: "", username: "" });
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [formData, setFormData] = useState({ full_name: "", username: "", bio: "" });
   
-  // Profile picture
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Profile picture & banner
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
   
   // Study goal
   const [studyGoalHours, setStudyGoalHours] = useState(2);
@@ -47,10 +60,18 @@ const Account = () => {
   const loadProfile = async () => {
     if (!user) return;
     try {
-      const { data, error } = await supabase.from('profiles').select('*').eq('user_id', user.id).single();
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('full_name, username, display_name, avatar_url, bio, banner_url, study_goal_minutes')
+        .eq('user_id', user.id)
+        .single();
       if (error) throw error;
       setProfile(data);
-      setFormData({ full_name: data.full_name || "", username: data.username || "" });
+      setFormData({ 
+        full_name: data.full_name || "", 
+        username: data.username || "",
+        bio: data.bio || ""
+      });
       setStudyGoalHours(Math.round((data.study_goal_minutes || 120) / 60 * 10) / 10);
     } catch (error) {
       console.error("Failed to load profile:", error);
@@ -75,7 +96,6 @@ const Account = () => {
       }
     }
 
-    // Check database for saved connection
     const { data: spotifyConnection } = await supabase
       .from('spotify_connections')
       .select('*')
@@ -116,7 +136,13 @@ const Account = () => {
 
     setSaving(true);
     try {
-      const { data: existingUser } = await supabase.from('profiles').select('user_id').eq('username', formData.username).neq('user_id', user.id).maybeSingle();
+      const { data: existingUser } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('username', formData.username)
+        .neq('user_id', user.id)
+        .maybeSingle();
+        
       if (existingUser) {
         toast.error("Deze gebruikersnaam is al in gebruik");
         setSaving(false);
@@ -126,6 +152,7 @@ const Account = () => {
       const { error } = await supabase.from('profiles').update({
         full_name: formData.full_name.trim(),
         username: formData.username.trim(),
+        bio: formData.bio.trim() || null,
       }).eq('user_id', user.id);
 
       if (error) throw error;
@@ -143,13 +170,11 @@ const Account = () => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       toast.error("Alleen afbeeldingen zijn toegestaan");
       return;
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast.error("Afbeelding mag maximaal 5MB zijn");
       return;
@@ -158,21 +183,18 @@ const Account = () => {
     setUploadingAvatar(true);
     try {
       const fileExt = file.name.split('.').pop();
-      const filePath = `avatars/${user.id}.${fileExt}`;
+      const filePath = `avatars/${user.id}-${Date.now()}.${fileExt}`;
 
-      // Upload to storage
       const { error: uploadError } = await supabase.storage
         .from('user-files')
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
       const { data: urlData } = supabase.storage
         .from('user-files')
         .getPublicUrl(filePath);
 
-      // Update profile with avatar URL
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ avatar_url: urlData.publicUrl })
@@ -187,6 +209,52 @@ const Account = () => {
       toast.error("Kon profielfoto niet uploaden");
     } finally {
       setUploadingAvatar(false);
+    }
+  };
+
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error("Alleen afbeeldingen zijn toegestaan");
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Afbeelding mag maximaal 10MB zijn");
+      return;
+    }
+
+    setUploadingBanner(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `banners/${user.id}-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('user-files')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from('user-files')
+        .getPublicUrl(filePath);
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ banner_url: urlData.publicUrl })
+        .eq('user_id', user.id);
+
+      if (updateError) throw updateError;
+
+      toast.success("Banner bijgewerkt");
+      loadProfile();
+    } catch (error) {
+      console.error("Banner upload error:", error);
+      toast.error("Kon banner niet uploaden");
+    } finally {
+      setUploadingBanner(false);
     }
   };
 
@@ -219,7 +287,6 @@ const Account = () => {
 
   const handleSpotifyDisconnect = async () => {
     if (!user) return;
-    
     await supabase.from('spotify_connections').delete().eq('user_id', user.id);
     spotifyLogout();
     setSpotifyConnected(false);
@@ -240,14 +307,12 @@ const Account = () => {
     if (!user) return;
     setDeleting(true);
     try {
-      // Delete user's files from storage and database
       const { data: userFiles } = await supabase.from('files').select('storage_url').eq('owner_id', user.id);
       if (userFiles && userFiles.length > 0) {
         await supabase.storage.from('user-files').remove(userFiles.map(f => f.storage_url));
         await supabase.from('files').delete().eq('owner_id', user.id);
       }
 
-      // Delete folders, notifications, file shares, spotify connection, profile
       await supabase.from('folders').delete().eq('owner_id', user.id);
       await supabase.from('notifications').delete().eq('recipient_id', user.id);
       await supabase.from('file_shares').delete().eq('shared_by_user_id', user.id);
@@ -277,25 +342,51 @@ const Account = () => {
     <div className="w-full space-y-6">
       <h1 className="text-4xl font-bold text-foreground">Account</h1>
 
-      {/* Profile Card */}
-      <Card className="rounded-2xl border-border">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-xl font-semibold">Profiel</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Avatar with upload */}
-          <div className="flex items-center gap-4 mb-6">
+      {/* Profile Card with Banner */}
+      <Card className="rounded-2xl border-border overflow-hidden">
+        {/* Banner */}
+        <div className="relative h-32 bg-gradient-to-br from-primary/20 to-primary/5">
+          {profile?.banner_url && (
+            <img
+              src={profile.banner_url}
+              alt="Banner"
+              className="w-full h-full object-cover"
+            />
+          )}
+          <button
+            onClick={() => bannerInputRef.current?.click()}
+            disabled={uploadingBanner}
+            className="absolute top-3 right-3 w-10 h-10 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-background transition-colors"
+          >
+            {uploadingBanner ? (
+              <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+            ) : (
+              <Image className="w-5 h-5 text-foreground" />
+            )}
+          </button>
+          <input
+            ref={bannerInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleBannerUpload}
+            className="hidden"
+          />
+        </div>
+
+        <CardContent className="pt-0">
+          {/* Avatar with upload - overlapping banner */}
+          <div className="flex items-end gap-4 -mt-12 mb-6">
             <div className="relative">
-              <Avatar className="w-20 h-20">
+              <Avatar className="w-24 h-24 border-4 border-background shadow-lg">
                 {profile?.avatar_url ? (
                   <AvatarImage src={profile.avatar_url} alt="Profielfoto" />
                 ) : null}
-                <AvatarFallback className="text-xl bg-primary/10 text-primary">
+                <AvatarFallback className="text-2xl bg-primary/10 text-primary">
                   {profile?.full_name ? getInitials(profile.full_name) : <User className="w-8 h-8" />}
                 </AvatarFallback>
               </Avatar>
               <button
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => avatarInputRef.current?.click()}
                 disabled={uploadingAvatar}
                 className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
               >
@@ -306,21 +397,21 @@ const Account = () => {
                 )}
               </button>
               <input
-                ref={fileInputRef}
+                ref={avatarInputRef}
                 type="file"
                 accept="image/*"
                 onChange={handleAvatarUpload}
                 className="hidden"
               />
             </div>
-            <div>
+            <div className="pb-2">
               <p className="font-medium text-lg">{profile?.full_name}</p>
               <p className="text-sm text-muted-foreground">@{profile?.username}</p>
             </div>
           </div>
 
           {!isEditing ? (
-            <>
+            <div className="space-y-4">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                   <User className="w-5 h-5 text-primary" />
@@ -351,12 +442,19 @@ const Account = () => {
                 </div>
               </div>
 
+              {profile?.bio && (
+                <div className="pt-2">
+                  <p className="text-xs text-muted-foreground mb-1">Bio</p>
+                  <p className="text-foreground whitespace-pre-wrap">{profile.bio}</p>
+                </div>
+              )}
+
               <Button variant="outline" onClick={() => setIsEditing(true)} className="rounded-full">
                 Bewerken
               </Button>
-            </>
+            </div>
           ) : (
-            <>
+            <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="full_name">Volledige naam</Label>
                 <Input 
@@ -378,6 +476,17 @@ const Account = () => {
                 <p className="text-xs text-muted-foreground">Anderen kunnen je vinden met deze gebruikersnaam</p>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="bio">Bio</Label>
+                <Textarea 
+                  id="bio" 
+                  value={formData.bio} 
+                  onChange={(e) => setFormData(prev => ({ ...prev, bio: e.target.value }))} 
+                  placeholder="Vertel iets over jezelf..."
+                  rows={3}
+                />
+              </div>
+
               <div className="flex gap-2">
                 <Button onClick={handleSave} disabled={saving} className="rounded-full">
                   {saving ? "Opslaan..." : "Opslaan"}
@@ -386,7 +495,7 @@ const Account = () => {
                   Annuleren
                 </Button>
               </div>
-            </>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -397,7 +506,6 @@ const Account = () => {
           <CardTitle className="text-xl font-semibold">Voorkeuren</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Study Goal Setting */}
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -481,7 +589,6 @@ const Account = () => {
             )}
           </div>
 
-          {/* Calendar Integrations */}
           <CalendarIntegrations />
         </CardContent>
       </Card>

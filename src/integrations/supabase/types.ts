@@ -298,6 +298,47 @@ export type Database = {
         }
         Relationships: []
       }
+      group_materials: {
+        Row: {
+          created_at: string
+          file_size: number
+          file_type: string
+          filename: string
+          group_id: string
+          id: string
+          storage_url: string
+          uploaded_by: string
+        }
+        Insert: {
+          created_at?: string
+          file_size: number
+          file_type: string
+          filename: string
+          group_id: string
+          id?: string
+          storage_url: string
+          uploaded_by: string
+        }
+        Update: {
+          created_at?: string
+          file_size?: number
+          file_type?: string
+          filename?: string
+          group_id?: string
+          id?: string
+          storage_url?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_materials_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "study_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_members: {
         Row: {
           created_at: string
@@ -432,6 +473,8 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          banner_url: string | null
+          bio: string | null
           created_at: string
           display_name: string | null
           full_name: string
@@ -443,6 +486,8 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          banner_url?: string | null
+          bio?: string | null
           created_at?: string
           display_name?: string | null
           full_name: string
@@ -454,6 +499,8 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          banner_url?: string | null
+          bio?: string | null
           created_at?: string
           display_name?: string | null
           full_name?: string
@@ -503,6 +550,7 @@ export type Database = {
       }
       study_groups: {
         Row: {
+          avatar_url: string | null
           created_at: string
           id: string
           name: string
@@ -510,6 +558,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
           id?: string
           name: string
@@ -517,6 +566,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
           id?: string
           name?: string

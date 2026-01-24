@@ -27,6 +27,7 @@ interface Message {
     avatar_url: string | null;
   };
   file?: {
+    id: string;
     filename: string;
     file_type: string;
     storage_url: string;

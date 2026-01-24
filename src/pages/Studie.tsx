@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -6,17 +7,21 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Users, X, UserPlus, Play, Pause, Clock, ChevronLeft, MessageCircle } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus, Users, X, UserPlus, Play, Pause, Clock, ChevronLeft, MessageCircle, Settings, Trash2, Camera, FolderOpen } from "lucide-react";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { GroupChat } from "@/components/studie/GroupChat";
+import { GroupMaterials } from "@/components/studie/GroupMaterials";
 
 interface StudyGroup {
   id: string;
   name: string;
   owner_id: string;
+  avatar_url: string | null;
   created_at: string;
   members?: GroupMember[];
 }
@@ -52,6 +57,7 @@ interface StudySession {
 
 export default function Studie() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [groups, setGroups] = useState<StudyGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -62,8 +68,28 @@ export default function Studie() {
   const [isSearching, setIsSearching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
+  // Group avatar upload for creation
+  const groupAvatarInputRef = useRef<HTMLInputElement>(null);
+  const [newGroupAvatarFile, setNewGroupAvatarFile] = useState<File | null>(null);
+  const [newGroupAvatarPreview, setNewGroupAvatarPreview] = useState<string | null>(null);
+
   // Selected group for detail view
   const [selectedGroup, setSelectedGroup] = useState<StudyGroup | null>(null);
+  const [activeTab, setActiveTab] = useState("members");
+
+  // Group editing
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editGroupName, setEditGroupName] = useState("");
+  const [isSavingGroup, setIsSavingGroup] = useState(false);
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
+  const editAvatarInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingGroupAvatar, setUploadingGroupAvatar] = useState(false);
+
+  // Invite dialog
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [inviteSearchQuery, setInviteSearchQuery] = useState("");
+  const [inviteSearchResults, setInviteSearchResults] = useState<Profile[]>([]);
+  const [isInviting, setIsInviting] = useState(false);
 
   // Study timer state
   const [isStudying, setIsStudying] = useState(false);
@@ -73,7 +99,6 @@ export default function Studie() {
   const [activeSessions, setActiveSessions] = useState<Map<string, StudySession>>(new Map());
   const [todayStudyTimes, setTodayStudyTimes] = useState<Map<string, number>>(new Map());
   const [myTodayStudyMinutes, setMyTodayStudyMinutes] = useState(0);
-  const [showChat, setShowChat] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -82,7 +107,6 @@ export default function Studie() {
       loadActiveSessions();
       loadMyTodayStudyTime();
 
-      // Subscribe to study session changes
       const channel = supabase
         .channel('study-sessions-realtime')
         .on(
@@ -130,7 +154,6 @@ export default function Studie() {
     setMyTodayStudyMinutes(totalMinutes);
   };
 
-  // Timer update effect
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isStudying && studyStartTime) {
@@ -141,7 +164,6 @@ export default function Studie() {
     return () => clearInterval(interval);
   }, [isStudying, studyStartTime]);
 
-  // Reload active sessions when groups change
   useEffect(() => {
     if (groups.length > 0) {
       loadActiveSessions();
@@ -169,7 +191,6 @@ export default function Studie() {
   const loadActiveSessions = async () => {
     if (!user) return;
 
-    // Get all group members' user IDs
     const groupMemberIds = new Set<string>();
     groups.forEach(group => {
       group.members?.forEach(member => {
@@ -183,7 +204,6 @@ export default function Studie() {
 
     const memberIdsArray = Array.from(groupMemberIds);
 
-    // Load active sessions
     const { data: activeSess } = await supabase
       .from("study_sessions")
       .select("*")
@@ -196,7 +216,6 @@ export default function Studie() {
     });
     setActiveSessions(sessionsMap);
 
-    // Load today's completed study time for each member
     const today = new Date();
     const dayStart = startOfDay(today).toISOString();
     const dayEnd = endOfDay(today).toISOString();
@@ -294,7 +313,6 @@ export default function Studie() {
     setLoading(true);
 
     try {
-      // Load groups where user is owner
       const { data: ownedGroups, error: ownedError } = await supabase
         .from("study_groups")
         .select("*")
@@ -304,7 +322,6 @@ export default function Studie() {
         console.error("Error loading owned groups:", ownedError);
       }
 
-      // Load groups where user is accepted member
       const { data: memberGroups, error: memberError } = await supabase
         .from("group_members")
         .select("group_id")
@@ -326,13 +343,11 @@ export default function Studie() {
         joinedGroups = data || [];
       }
 
-      // Combine and deduplicate
       const allGroups = [...(ownedGroups || []), ...joinedGroups];
       const uniqueGroups = allGroups.filter((group, index, self) => 
         index === self.findIndex(g => g.id === group.id)
       );
 
-      // Load members for each group
       const groupsWithMembers: StudyGroup[] = [];
       for (const group of uniqueGroups) {
         const { data: members } = await supabase
@@ -386,7 +401,6 @@ export default function Studie() {
 
       if (error) throw error;
 
-      // Filter out already selected users
       const filtered = (data || []).filter(
         profile => !selectedUsers.some(u => u.user_id === profile.user_id)
       );
@@ -405,6 +419,76 @@ export default function Studie() {
     return () => clearTimeout(debounce);
   }, [searchQuery]);
 
+  // Invite search
+  const searchUsersForInvite = async (query: string) => {
+    if (query.length < 2 || !selectedGroup) {
+      setInviteSearchResults([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("user_id, username, full_name, display_name")
+        .or(`username.ilike.%${query}%,full_name.ilike.%${query}%`)
+        .neq("user_id", user?.id)
+        .limit(10);
+
+      if (error) throw error;
+
+      // Filter out existing members
+      const existingMemberIds = selectedGroup.members?.map(m => m.user_id) || [];
+      const filtered = (data || []).filter(
+        profile => !existingMemberIds.includes(profile.user_id) && profile.user_id !== selectedGroup.owner_id
+      );
+      setInviteSearchResults(filtered);
+    } catch (error) {
+      console.error("Search error:", error);
+    }
+  };
+
+  useEffect(() => {
+    const debounce = setTimeout(() => {
+      searchUsersForInvite(inviteSearchQuery);
+    }, 300);
+    return () => clearTimeout(debounce);
+  }, [inviteSearchQuery]);
+
+  const inviteUserToGroup = async (profile: Profile) => {
+    if (!user || !selectedGroup) return;
+
+    setIsInviting(true);
+    try {
+      const { error: memberError } = await supabase
+        .from("group_members")
+        .insert({
+          group_id: selectedGroup.id,
+          user_id: profile.user_id,
+          invited_by: user.id,
+          status: "pending",
+        });
+
+      if (memberError) throw memberError;
+
+      await supabase.from("notifications").insert({
+        recipient_id: profile.user_id,
+        sender_id: user.id,
+        type: "group_invite",
+        message: `Je bent uitgenodigd voor de studiegroep "${selectedGroup.name}"`,
+      });
+
+      toast.success(`${profile.display_name || profile.full_name} uitgenodigd`);
+      setInviteSearchQuery("");
+      setInviteSearchResults([]);
+      loadGroups();
+    } catch (error) {
+      console.error("Invite error:", error);
+      toast.error("Kon gebruiker niet uitnodigen");
+    } finally {
+      setIsInviting(false);
+    }
+  };
+
   const addUser = (profile: Profile) => {
     setSelectedUsers(prev => [...prev, profile]);
     setSearchResults(prev => prev.filter(p => p.user_id !== profile.user_id));
@@ -415,17 +499,49 @@ export default function Studie() {
     setSelectedUsers(prev => prev.filter(u => u.user_id !== userId));
   };
 
+  const handleNewGroupAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error("Alleen afbeeldingen zijn toegestaan");
+      return;
+    }
+
+    setNewGroupAvatarFile(file);
+    setNewGroupAvatarPreview(URL.createObjectURL(file));
+  };
+
   const createGroup = async () => {
     if (!user || !newGroupName.trim()) return;
 
     setIsCreating(true);
     try {
-      // Create the group
+      let avatarUrl: string | null = null;
+
+      // Upload avatar if selected
+      if (newGroupAvatarFile) {
+        const fileExt = newGroupAvatarFile.name.split('.').pop();
+        const filePath = `group-avatars/${Date.now()}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('user-files')
+          .upload(filePath, newGroupAvatarFile);
+
+        if (!uploadError) {
+          const { data: urlData } = supabase.storage
+            .from('user-files')
+            .getPublicUrl(filePath);
+          avatarUrl = urlData.publicUrl;
+        }
+      }
+
       const { data: group, error: groupError } = await supabase
         .from("study_groups")
         .insert({
           name: newGroupName.trim(),
           owner_id: user.id,
+          avatar_url: avatarUrl,
         })
         .select()
         .single();
@@ -439,9 +555,7 @@ export default function Studie() {
         throw new Error("No group data returned");
       }
 
-      // Add selected users as pending members and send notifications
       if (selectedUsers.length > 0) {
-        // Insert group members
         const membersToInsert = selectedUsers.map(u => ({
           group_id: group.id,
           user_id: u.user_id,
@@ -457,7 +571,6 @@ export default function Studie() {
           console.error("Members insertion error:", membersError);
         }
 
-        // Send notifications to invited users
         const notifications = selectedUsers.map(u => ({
           recipient_id: u.user_id,
           sender_id: user.id,
@@ -474,6 +587,8 @@ export default function Studie() {
       toast.success("Groep aangemaakt!");
       setNewGroupName("");
       setSelectedUsers([]);
+      setNewGroupAvatarFile(null);
+      setNewGroupAvatarPreview(null);
       setCreateDialogOpen(false);
       loadGroups();
     } catch (error: any) {
@@ -482,6 +597,105 @@ export default function Studie() {
     } finally {
       setIsCreating(false);
     }
+  };
+
+  const handleEditGroupAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedGroup) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error("Alleen afbeeldingen zijn toegestaan");
+      return;
+    }
+
+    setUploadingGroupAvatar(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `group-avatars/${selectedGroup.id}-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('user-files')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from('user-files')
+        .getPublicUrl(filePath);
+
+      const { error: updateError } = await supabase
+        .from('study_groups')
+        .update({ avatar_url: urlData.publicUrl })
+        .eq('id', selectedGroup.id);
+
+      if (updateError) throw updateError;
+
+      toast.success("Groepsfoto bijgewerkt");
+      loadGroups();
+      setSelectedGroup(prev => prev ? { ...prev, avatar_url: urlData.publicUrl } : null);
+    } catch (error) {
+      console.error("Avatar upload error:", error);
+      toast.error("Kon groepsfoto niet uploaden");
+    } finally {
+      setUploadingGroupAvatar(false);
+    }
+  };
+
+  const saveGroupEdit = async () => {
+    if (!selectedGroup || !editGroupName.trim()) return;
+
+    setIsSavingGroup(true);
+    try {
+      const { error } = await supabase
+        .from('study_groups')
+        .update({ name: editGroupName.trim() })
+        .eq('id', selectedGroup.id);
+
+      if (error) throw error;
+
+      toast.success("Groep bijgewerkt");
+      setEditDialogOpen(false);
+      loadGroups();
+      setSelectedGroup(prev => prev ? { ...prev, name: editGroupName.trim() } : null);
+    } catch (error) {
+      toast.error("Kon groep niet bijwerken");
+    } finally {
+      setIsSavingGroup(false);
+    }
+  };
+
+  const deleteGroup = async () => {
+    if (!selectedGroup) return;
+
+    setIsDeletingGroup(true);
+    try {
+      // Delete group members first
+      await supabase.from('group_members').delete().eq('group_id', selectedGroup.id);
+      // Delete group messages
+      await supabase.from('group_messages').delete().eq('group_id', selectedGroup.id);
+      // Delete group materials
+      await supabase.from('group_materials').delete().eq('group_id', selectedGroup.id);
+      // Delete the group
+      const { error } = await supabase
+        .from('study_groups')
+        .delete()
+        .eq('id', selectedGroup.id);
+
+      if (error) throw error;
+
+      toast.success("Groep verwijderd");
+      setSelectedGroup(null);
+      loadGroups();
+    } catch (error) {
+      console.error("Delete group error:", error);
+      toast.error("Kon groep niet verwijderen");
+    } finally {
+      setIsDeletingGroup(false);
+    }
+  };
+
+  const navigateToProfile = (username: string) => {
+    navigate(`/profiel/${username}`);
   };
 
   const getInitials = (name: string) => {
@@ -494,24 +708,172 @@ export default function Studie() {
   if (selectedGroup) {
     const acceptedMembers = selectedGroup.members?.filter(m => m.status === 'accepted') || [];
     const pendingMembers = selectedGroup.members?.filter(m => m.status === 'pending') || [];
+    const isOwner = selectedGroup.owner_id === user.id;
 
     return (
       <div className="w-full">
-        <div className="flex items-center gap-4 mb-8">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSelectedGroup(null)}
-            className="rounded-full"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </Button>
-          <div>
-            <h1 className="text-4xl font-bold text-foreground">{selectedGroup.name}</h1>
-            <p className="text-muted-foreground">
-              {acceptedMembers.length + 1} leden
-            </p>
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSelectedGroup(null)}
+              className="rounded-full"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </Button>
+            <div className="relative">
+              <Avatar className="w-12 h-12">
+                {selectedGroup.avatar_url ? (
+                  <AvatarImage src={selectedGroup.avatar_url} />
+                ) : null}
+                <AvatarFallback className="bg-primary/10 text-primary">
+                  <Users className="w-6 h-6" />
+                </AvatarFallback>
+              </Avatar>
+              {isOwner && (
+                <>
+                  <button
+                    onClick={() => editAvatarInputRef.current?.click()}
+                    disabled={uploadingGroupAvatar}
+                    className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
+                  >
+                    {uploadingGroupAvatar ? (
+                      <div className="w-3 h-3 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                    ) : (
+                      <Camera className="w-3 h-3" />
+                    )}
+                  </button>
+                  <input
+                    ref={editAvatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleEditGroupAvatarUpload}
+                    className="hidden"
+                  />
+                </>
+              )}
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">{selectedGroup.name}</h1>
+              <p className="text-muted-foreground">
+                {acceptedMembers.length + 1} leden
+              </p>
+            </div>
           </div>
+
+          {isOwner && (
+            <div className="flex items-center gap-2">
+              <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="rounded-full gap-2">
+                    <UserPlus className="w-4 h-4" />
+                    Nodig leden uit
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Leden uitnodigen</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <Input
+                      value={inviteSearchQuery}
+                      onChange={(e) => setInviteSearchQuery(e.target.value)}
+                      placeholder="Zoek op gebruikersnaam of naam..."
+                    />
+                    
+                    {inviteSearchResults.length > 0 && (
+                      <ScrollArea className="max-h-48 border rounded-lg">
+                        <div className="p-2 space-y-1">
+                          {inviteSearchResults.map((profile) => (
+                            <button
+                              key={profile.user_id}
+                              onClick={() => inviteUserToGroup(profile)}
+                              disabled={isInviting}
+                              className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted text-left"
+                            >
+                              <UserPlus className="w-4 h-4 text-muted-foreground" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium truncate">
+                                  {profile.display_name || profile.full_name}
+                                </p>
+                                <p className="text-xs text-muted-foreground">@{profile.username}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={editDialogOpen} onOpenChange={(open) => {
+                setEditDialogOpen(open);
+                if (open) setEditGroupName(selectedGroup.name);
+              }}>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="rounded-full">
+                    <Settings className="w-5 h-5" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Groep bewerken</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <Label>Groepsnaam</Label>
+                      <Input
+                        value={editGroupName}
+                        onChange={(e) => setEditGroupName(e.target.value)}
+                        placeholder="Groepsnaam"
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={saveGroupEdit}
+                        disabled={!editGroupName.trim() || isSavingGroup}
+                        className="flex-1"
+                      >
+                        {isSavingGroup ? "Opslaan..." : "Opslaan"}
+                      </Button>
+                    </div>
+
+                    <div className="pt-4 border-t">
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" className="w-full gap-2">
+                            <Trash2 className="w-4 h-4" />
+                            Groep verwijderen
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Groep verwijderen?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Dit verwijdert de groep permanent, inclusief alle berichten en lesmateriaal. Deze actie kan niet ongedaan worden gemaakt.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={deleteGroup}
+                              disabled={isDeletingGroup}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              {isDeletingGroup ? "Verwijderen..." : "Verwijderen"}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          )}
         </div>
 
         {/* Study Timer Card */}
@@ -556,112 +918,149 @@ export default function Studie() {
           </CardContent>
         </Card>
 
-        {/* Group Members */}
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold">Groepsleden</h2>
-          
-          {/* Owner */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-4">
-                <Avatar className="w-12 h-12">
-                  <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                    JIJ
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className={`font-medium ${isStudying ? 'text-green-600' : ''}`}>
-                      Jij (Beheerder)
-                    </p>
-                    {isStudying && (
-                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    )}
-                  </div>
-                  {isStudying && (
-                    <p className="text-sm text-green-600">
-                      Aan het studeren • {formatTime(elapsedTime)} vandaag
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Tabs for Members, Chat, Materials */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="members" className="gap-2">
+              <Users className="w-4 h-4" />
+              Leden
+            </TabsTrigger>
+            <TabsTrigger value="chat" className="gap-2">
+              <MessageCircle className="w-4 h-4" />
+              Chat
+            </TabsTrigger>
+            <TabsTrigger value="materials" className="gap-2">
+              <FolderOpen className="w-4 h-4" />
+              Materiaal
+            </TabsTrigger>
+          </TabsList>
 
-          {/* Accepted Members */}
-          {acceptedMembers.map((member) => {
-            const memberIsStudying = activeSessions.has(member.user_id);
-            const activeSession = activeSessions.get(member.user_id);
-            const todayTime = todayStudyTimes.get(member.user_id) || 0;
-            const currentSessionTime = activeSession 
-              ? Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 60000)
-              : 0;
-            const totalTodayMinutes = todayTime + currentSessionTime;
-            const displayName = member.profile?.display_name || member.profile?.full_name || "Onbekend";
-
-            return (
-              <Card key={member.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-4">
-                    <Avatar className="w-12 h-12">
-                      <AvatarFallback className={`font-semibold ${memberIsStudying ? 'bg-green-100 text-green-700' : 'bg-muted'}`}>
-                        {getInitials(displayName)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className={`font-medium ${memberIsStudying ? 'text-green-600' : ''}`}>
-                          {displayName}
-                        </p>
-                        {memberIsStudying && (
-                          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">@{member.profile?.username}</p>
-                      {memberIsStudying && (
-                        <p className="text-sm text-green-600 mt-1">
-                          Aan het studeren • {formatMinutes(totalTodayMinutes)} vandaag
-                        </p>
-                      )}
-                      {!memberIsStudying && totalTodayMinutes > 0 && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {formatMinutes(totalTodayMinutes)} gestudeerd vandaag
-                        </p>
+          <TabsContent value="members" className="space-y-4">
+            {/* Owner */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-4">
+                  <Avatar className="w-12 h-12">
+                    <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                      JIJ
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className={`font-medium ${isStudying ? 'text-green-600' : ''}`}>
+                        Jij (Beheerder)
+                      </p>
+                      {isStudying && (
+                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                       )}
                     </div>
+                    {isStudying && (
+                      <p className="text-sm text-green-600">
+                        Aan het studeren • {formatTime(elapsedTime)} vandaag
+                      </p>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                </div>
+              </CardContent>
+            </Card>
 
-          {/* Pending Members */}
-          {pendingMembers.length > 0 && (
-            <>
-              <h3 className="text-lg font-medium text-muted-foreground mt-6">Uitgenodigd</h3>
-              {pendingMembers.map((member) => {
-                const displayName = member.profile?.display_name || member.profile?.full_name || "Onbekend";
-                return (
-                  <Card key={member.id} className="opacity-60">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-4">
-                        <Avatar className="w-12 h-12">
-                          <AvatarFallback className="bg-yellow-100 text-yellow-700 font-semibold">
-                            {getInitials(displayName)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <p className="font-medium">{displayName}</p>
-                          <p className="text-sm text-yellow-600">Wacht op reactie</p>
+            {/* Accepted Members */}
+            {acceptedMembers.map((member) => {
+              const memberIsStudying = activeSessions.has(member.user_id);
+              const activeSession = activeSessions.get(member.user_id);
+              const todayTime = todayStudyTimes.get(member.user_id) || 0;
+              const currentSessionTime = activeSession 
+                ? Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 60000)
+                : 0;
+              const totalTodayMinutes = todayTime + currentSessionTime;
+              const displayName = member.profile?.display_name || member.profile?.full_name || "Onbekend";
+
+              return (
+                <Card 
+                  key={member.id} 
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => member.profile?.username && navigateToProfile(member.profile.username)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-4">
+                      <Avatar className="w-12 h-12">
+                        {member.profile?.avatar_url && (
+                          <AvatarImage src={member.profile.avatar_url} />
+                        )}
+                        <AvatarFallback className={`font-semibold ${memberIsStudying ? 'bg-green-100 text-green-700' : 'bg-muted'}`}>
+                          {getInitials(displayName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className={`font-medium ${memberIsStudying ? 'text-green-600' : ''}`}>
+                            {displayName}
+                          </p>
+                          {memberIsStudying && (
+                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                          )}
                         </div>
+                        <p className="text-sm text-muted-foreground">@{member.profile?.username}</p>
+                        {memberIsStudying && (
+                          <p className="text-sm text-green-600 mt-1">
+                            Aan het studeren • {formatMinutes(totalTodayMinutes)} vandaag
+                          </p>
+                        )}
+                        {!memberIsStudying && totalTodayMinutes > 0 && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {formatMinutes(totalTodayMinutes)} gestudeerd vandaag
+                          </p>
+                        )}
                       </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </>
-          )}
-        </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            {/* Pending Members */}
+            {pendingMembers.length > 0 && (
+              <>
+                <h3 className="text-lg font-medium text-muted-foreground mt-6">Uitgenodigd</h3>
+                {pendingMembers.map((member) => {
+                  const displayName = member.profile?.display_name || member.profile?.full_name || "Onbekend";
+                  return (
+                    <Card key={member.id} className="opacity-60">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-4">
+                          <Avatar className="w-12 h-12">
+                            {member.profile?.avatar_url && (
+                              <AvatarImage src={member.profile.avatar_url} />
+                            )}
+                            <AvatarFallback className="bg-yellow-100 text-yellow-700 font-semibold">
+                              {getInitials(displayName)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1">
+                            <p className="font-medium">{displayName}</p>
+                            <p className="text-sm text-yellow-600">Wacht op reactie</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </>
+            )}
+          </TabsContent>
+
+          <TabsContent value="chat">
+            <GroupChat groupId={selectedGroup.id} />
+          </TabsContent>
+
+          <TabsContent value="materials">
+            <Card>
+              <CardContent className="p-6">
+                <GroupMaterials groupId={selectedGroup.id} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     );
   }
@@ -683,6 +1082,33 @@ export default function Studie() {
               <DialogTitle>Nieuwe studiegroep</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
+              {/* Group avatar selection */}
+              <div className="flex justify-center">
+                <div className="relative">
+                  <Avatar className="w-20 h-20">
+                    {newGroupAvatarPreview ? (
+                      <AvatarImage src={newGroupAvatarPreview} />
+                    ) : null}
+                    <AvatarFallback className="bg-primary/10 text-primary">
+                      <Users className="w-8 h-8" />
+                    </AvatarFallback>
+                  </Avatar>
+                  <button
+                    onClick={() => groupAvatarInputRef.current?.click()}
+                    className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
+                  <input
+                    ref={groupAvatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleNewGroupAvatarSelect}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label>Groepsnaam</Label>
                 <Input
@@ -700,7 +1126,6 @@ export default function Studie() {
                   placeholder="Zoek op gebruikersnaam of naam..."
                 />
                 
-                {/* Search Results */}
                 {searchResults.length > 0 && (
                   <ScrollArea className="max-h-32 border rounded-lg">
                     <div className="p-2 space-y-1">
@@ -723,7 +1148,6 @@ export default function Studie() {
                   </ScrollArea>
                 )}
 
-                {/* Selected Users */}
                 {selectedUsers.length > 0 && (
                   <div className="flex flex-wrap gap-2 pt-2">
                     {selectedUsers.map((profile) => (
@@ -752,6 +1176,8 @@ export default function Studie() {
                     setCreateDialogOpen(false);
                     setNewGroupName("");
                     setSelectedUsers([]);
+                    setNewGroupAvatarFile(null);
+                    setNewGroupAvatarPreview(null);
                   }}
                 >
                   Annuleren
@@ -838,9 +1264,14 @@ export default function Studie() {
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Users className="w-5 h-5 text-primary" />
-                    </div>
+                    <Avatar className="w-10 h-10">
+                      {group.avatar_url ? (
+                        <AvatarImage src={group.avatar_url} />
+                      ) : null}
+                      <AvatarFallback className="bg-primary/10 text-primary">
+                        <Users className="w-5 h-5" />
+                      </AvatarFallback>
+                    </Avatar>
                     <div>
                       <h3 className="font-semibold text-foreground">{group.name}</h3>
                       <p className="text-sm text-muted-foreground">

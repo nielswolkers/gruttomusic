@@ -16,6 +16,7 @@ import Taken from "./pages/Taken";
 import Agenda from "./pages/Agenda";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import Studie from "./pages/Studie";
+import UserProfile from "./pages/UserProfile";
 import Callback from "./pages/Callback";
 import GoogleCallback from "./pages/GoogleCallback";
 import NotFound from "./pages/NotFound";
@@ -65,6 +66,7 @@ function AppRoutes() {
         <Route path="/bestanden/preview/:fileId" element={<FilePreview />} />
         <Route path="/meldingen" element={<Meldingen />} />
         <Route path="/account" element={<Account />} />
+        <Route path="/profiel/:username" element={<UserProfile />} />
         <Route path="/instellingen" element={<Settings />} />
       </Route>
       <Route path="*" element={<NotFound />} />
