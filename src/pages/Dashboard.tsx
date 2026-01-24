@@ -5,10 +5,10 @@ import { MusicRecommendations } from '@/components/MusicRecommendations';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
-type TimeFilter = 'vandaag' | 'week' | 'maand';
+type TimeFilter = 'dag' | 'week' | 'maand';
 
 const filterTitles: Record<TimeFilter, string> = {
-  vandaag: 'Vandaag',
+  dag: 'Vandaag',
   week: 'Deze week',
   maand: 'Deze maand',
 };
@@ -20,7 +20,7 @@ interface OutletContextType {
 
 export default function Dashboard() {
   const accessToken = getStoredAccessToken();
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>('vandaag');
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('dag');
   const { deviceId, setCurrentContext } = useOutletContext<OutletContextType>() || {};
 
   return (
@@ -32,7 +32,7 @@ export default function Dashboard() {
           
           {/* macOS-style segmented control */}
           <div className="flex bg-muted rounded-lg p-1 gap-0.5">
-            {(['vandaag', 'week', 'maand'] as TimeFilter[]).map((filter) => (
+            {(['dag', 'week', 'maand'] as TimeFilter[]).map((filter) => (
               <button
                 key={filter}
                 onClick={() => setTimeFilter(filter)}
@@ -42,7 +42,7 @@ export default function Dashboard() {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {filter === 'vandaag' ? 'Vandaag' : filter === 'week' ? 'Week' : 'Maand'}
+                {filter === 'dag' ? 'Dag' : filter === 'week' ? 'Week' : 'Maand'}
               </button>
             ))}
           </div>

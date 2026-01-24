@@ -2,10 +2,12 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { FileIcon, Undo2, Trash2, Bell } from "lucide-react";
+import { FileIcon, Undo2, Trash2, Bell, Calendar, Users, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { formatRelativeDate } from "@/lib/dateUtils";
 import { useAuth } from "@/hooks/useAuth";
+import { format, parseISO } from "date-fns";
+import { nl } from "date-fns/locale";
 
 interface Notification {
   id: string;
@@ -19,6 +21,36 @@ interface Notification {
   files?: { id: string; filename: string; file_size: number; deleted_at: string | null };
 }
 
+interface EventInvitation {
+  id: string;
+  event_id: string;
+  status: string;
+  event?: {
+    id: string;
+    title: string;
+    start_time: string;
+    end_time: string;
+  };
+  inviter?: {
+    full_name: string;
+    display_name: string | null;
+  };
+}
+
+interface GroupInvitation {
+  id: string;
+  group_id: string;
+  status: string;
+  group?: {
+    id: string;
+    name: string;
+  };
+  inviter?: {
+    full_name: string;
+    display_name: string | null;
+  };
+}
+
 const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
@@ -29,12 +61,15 @@ const Meldingen = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [eventInvitations, setEventInvitations] = useState<EventInvitation[]>([]);
+  const [groupInvitations, setGroupInvitations] = useState<GroupInvitation[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (user) {
       loadNotifications();
-      // Mark all notifications as read when page opens
+      loadEventInvitations();
+      loadGroupInvitations();
       markAllAsReadOnOpen();
     }
   }, [user]);
@@ -42,12 +77,93 @@ const Meldingen = () => {
   const markAllAsReadOnOpen = async () => {
     if (!user) return;
     
-    // Update all unread notifications to read
     await supabase
       .from('notifications')
       .update({ read_status: true })
       .eq('recipient_id', user.id)
       .eq('read_status', false);
+  };
+
+  const loadEventInvitations = async () => {
+    if (!user) return;
+
+    try {
+      const { data: invitations } = await supabase
+        .from("event_invitations")
+        .select("id, event_id, status")
+        .eq("invitee_id", user.id)
+        .eq("status", "pending");
+
+      if (!invitations || invitations.length === 0) {
+        setEventInvitations([]);
+        return;
+      }
+
+      // Load event details
+      const eventIds = invitations.map(i => i.event_id);
+      const { data: events } = await supabase
+        .from("calendar_events")
+        .select("id, title, start_time, end_time, user_id")
+        .in("id", eventIds);
+
+      // Load inviter profiles
+      const inviterIds = events?.map(e => e.user_id) || [];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("user_id, full_name, display_name")
+        .in("user_id", inviterIds);
+
+      const enrichedInvitations = invitations.map(inv => ({
+        ...inv,
+        event: events?.find(e => e.id === inv.event_id),
+        inviter: profiles?.find(p => p.user_id === events?.find(e => e.id === inv.event_id)?.user_id)
+      }));
+
+      setEventInvitations(enrichedInvitations);
+    } catch (error) {
+      console.error("Failed to load event invitations:", error);
+    }
+  };
+
+  const loadGroupInvitations = async () => {
+    if (!user) return;
+
+    try {
+      const { data: invitations } = await supabase
+        .from("group_members")
+        .select("id, group_id, status, invited_by")
+        .eq("user_id", user.id)
+        .eq("status", "pending");
+
+      if (!invitations || invitations.length === 0) {
+        setGroupInvitations([]);
+        return;
+      }
+
+      // Load group details
+      const groupIds = invitations.map(i => i.group_id);
+      const { data: groups } = await supabase
+        .from("study_groups")
+        .select("id, name")
+        .in("id", groupIds);
+
+      // Load inviter profiles
+      const inviterIds = invitations.map(i => i.invited_by);
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("user_id, full_name, display_name")
+        .in("user_id", inviterIds);
+
+      const enrichedInvitations = invitations.map(inv => ({
+        ...inv,
+        group: groups?.find(g => g.id === inv.group_id),
+        inviter: profiles?.find(p => p.user_id === inv.invited_by)
+      }));
+
+      setGroupInvitations(enrichedInvitations);
+    } catch (error) {
+      console.error("Failed to load group invitations:", error);
+    }
   };
 
   const loadNotifications = async () => {
@@ -87,6 +203,40 @@ const Meldingen = () => {
       toast.error("Kon meldingen niet laden");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const respondToEventInvitation = async (invitationId: string, accept: boolean) => {
+    try {
+      await supabase
+        .from("event_invitations")
+        .update({ 
+          status: accept ? "accepted" : "declined",
+          responded_at: new Date().toISOString()
+        })
+        .eq("id", invitationId);
+
+      toast.success(accept ? "Uitnodiging geaccepteerd" : "Uitnodiging afgewezen");
+      loadEventInvitations();
+    } catch (error) {
+      toast.error("Kon niet reageren op uitnodiging");
+    }
+  };
+
+  const respondToGroupInvitation = async (invitationId: string, accept: boolean) => {
+    try {
+      await supabase
+        .from("group_members")
+        .update({ 
+          status: accept ? "accepted" : "declined",
+          responded_at: new Date().toISOString()
+        })
+        .eq("id", invitationId);
+
+      toast.success(accept ? "Uitnodiging geaccepteerd" : "Uitnodiging afgewezen");
+      loadGroupInvitations();
+    } catch (error) {
+      toast.error("Kon niet reageren op uitnodiging");
     }
   };
 
@@ -137,6 +287,8 @@ const Meldingen = () => {
 
   if (!user) return null;
 
+  const hasAnyContent = notifications.length > 0 || eventInvitations.length > 0 || groupInvitations.length > 0;
+
   return (
     <div className="w-full">
       <div className="flex items-center justify-between mb-8">
@@ -159,7 +311,7 @@ const Meldingen = () => {
         </div>
       )}
 
-      {!loading && notifications.length === 0 && (
+      {!loading && !hasAnyContent && (
         <div className="text-center py-12">
           <Bell className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
           <p className="text-muted-foreground">Geen meldingen</p>
@@ -168,6 +320,109 @@ const Meldingen = () => {
 
       {!loading && (
         <div className="space-y-4">
+          {/* Event Invitations */}
+          {eventInvitations.map((invitation) => (
+            <div key={invitation.id} className="rounded-2xl border bg-card border-border p-5">
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <p className="text-[15px] flex-1">
+                  <span className="font-semibold">
+                    {invitation.inviter?.display_name || invitation.inviter?.full_name}
+                  </span>
+                  {' '}heeft u uitgenodigd voor een agenda activiteit.
+                </p>
+                <Button 
+                  size="sm" 
+                  variant="secondary" 
+                  className="rounded-full px-4 h-8 text-xs bg-muted hover:bg-muted/80 shrink-0"
+                >
+                  Wis
+                </Button>
+              </div>
+
+              {invitation.event && (
+                <div className="bg-secondary/50 rounded-xl p-4 mb-3">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="w-5 h-5 text-muted-foreground shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-sm">{invitation.event.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(parseISO(invitation.event.start_time), "d MMMM HH:mm", { locale: nl })}
+                        {" - "}
+                        {format(parseISO(invitation.event.end_time), "HH:mm", { locale: nl })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2 mb-3">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="rounded-full h-9"
+                  onClick={() => respondToEventInvitation(invitation.id, true)}
+                >
+                  <Check className="w-4 h-4 mr-2" />
+                  Bevestig
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="rounded-full h-9 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10"
+                  onClick={() => respondToEventInvitation(invitation.id, false)}
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Wijger
+                </Button>
+              </div>
+            </div>
+          ))}
+
+          {/* Group Invitations */}
+          {groupInvitations.map((invitation) => (
+            <div key={invitation.id} className="rounded-2xl border bg-card border-border p-5">
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <p className="text-[15px] flex-1">
+                  <span className="font-semibold">
+                    {invitation.inviter?.display_name || invitation.inviter?.full_name}
+                  </span>
+                  {' '}heeft u uitgenodigd voor de studiegroep "{invitation.group?.name}".
+                </p>
+              </div>
+
+              <div className="bg-secondary/50 rounded-xl p-4 mb-3">
+                <div className="flex items-center gap-3">
+                  <Users className="w-5 h-5 text-muted-foreground shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm">{invitation.group?.name}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 mb-3">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="rounded-full h-9"
+                  onClick={() => respondToGroupInvitation(invitation.id, true)}
+                >
+                  <Check className="w-4 h-4 mr-2" />
+                  Accepteren
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="rounded-full h-9 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10"
+                  onClick={() => respondToGroupInvitation(invitation.id, false)}
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Afwijzen
+                </Button>
+              </div>
+            </div>
+          ))}
+
+          {/* Regular Notifications */}
           {notifications.map((notification) => {
             const isDeleteNotification = notification.type === 'file_deleted' || notification.type === 'folder_deleted';
             const isShareNotification = notification.type === 'file_shared';
@@ -178,7 +433,6 @@ const Meldingen = () => {
                 key={notification.id} 
                 className="rounded-2xl border bg-card border-border p-5"
               >
-                {/* Header with message and dismiss button */}
                 <div className="flex items-start justify-between gap-4 mb-3">
                   <p className="text-[15px] flex-1">
                     {isShareNotification ? (
@@ -202,7 +456,6 @@ const Meldingen = () => {
                   </Button>
                 </div>
 
-                {/* File info card - clickable to open file */}
                 {notification.files && (
                   <div 
                     className={`bg-secondary/50 rounded-xl p-4 mb-3 ${canOpenFile ? 'cursor-pointer hover:bg-secondary/70 transition-colors' : ''}`}
@@ -222,7 +475,6 @@ const Meldingen = () => {
                   </div>
                 )}
 
-                {/* Action buttons for delete notifications */}
                 {isDeleteNotification && notification.file_id && (
                   <div className="flex gap-2 mb-3">
                     <Button 
@@ -246,7 +498,6 @@ const Meldingen = () => {
                   </div>
                 )}
 
-                {/* Timestamp */}
                 <p className="text-sm text-muted-foreground text-right">
                   {formatRelativeDate(notification.created_at)}
                 </p>
