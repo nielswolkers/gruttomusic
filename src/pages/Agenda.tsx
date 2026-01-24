@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from "react";
-import { ChevronLeft, ChevronRight, Plus, Monitor, Search, MapPin, Save } from "lucide-react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { ChevronLeft, ChevronRight, Plus, Monitor, Search, MapPin } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, parseISO, addWeeks, subWeeks, addDays, subDays } from "date-fns";
 import { nl } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { UserInviteSearch } from "@/components/agenda/UserInviteSearch";
 
 type TimeFilter = 'dag' | 'week' | 'maand';
-type SidebarMode = 'events' | 'create' | 'meeting';
+type SidebarMode = 'events' | 'create' | 'meeting' | 'view' | 'search';
 
 const filterTitles: Record<TimeFilter, string> = {
   dag: 'Vandaag',
@@ -33,6 +33,9 @@ interface CalendarEvent {
   source: 'task' | 'zermelo' | 'outlook' | 'google' | 'local';
   color: string;
   eventType?: string;
+  description?: string;
+  location?: string;
+  dbId?: string; // Original database ID for editing
 }
 
 interface Task {
@@ -52,6 +55,8 @@ interface CalendarEventDB {
   all_day: boolean;
   color: string;
   event_type: string;
+  description?: string;
+  location?: string;
 }
 
 interface CalendarConnection {
@@ -157,12 +162,24 @@ const Agenda = () => {
   const [currentEventId, setCurrentEventId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Selected event for viewing/editing
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+
+  // Deleted event for undo functionality
+  const [deletedEvent, setDeletedEvent] = useState<CalendarEvent | null>(null);
+
   // Refs for auto-scroll to current time
   const weekScrollRef = useRef<HTMLDivElement>(null);
   const dayScrollRef = useRef<HTMLDivElement>(null);
 
   // Current time state for the time indicator
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Drag state
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragEventId, setDragEventId] = useState<string | null>(null);
+  const [dragStartY, setDragStartY] = useState(0);
+  const [dragCurrentY, setDragCurrentY] = useState(0);
 
   // Update current time every minute
   useEffect(() => {
@@ -240,6 +257,76 @@ const Agenda = () => {
     return () => clearTimeout(timeout);
   }, [timeFilter, loading]);
 
+  // Keyboard handler for backspace delete and Ctrl+Z undo
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      // Backspace to delete selected event
+      if (e.key === 'Backspace' && selectedEvent && selectedEvent.source === 'local' && sidebarMode === 'view') {
+        e.preventDefault();
+        await deleteSelectedEvent();
+      }
+      
+      // Ctrl+Z to undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && deletedEvent) {
+        e.preventDefault();
+        await undoDelete();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedEvent, deletedEvent, sidebarMode]);
+
+  const deleteSelectedEvent = async () => {
+    if (!selectedEvent || !selectedEvent.dbId) return;
+
+    try {
+      // Store for undo
+      setDeletedEvent(selectedEvent);
+
+      await supabase.from("calendar_events").delete().eq('id', selectedEvent.dbId);
+      
+      toast.success("Gebeurtenis verwijderd", {
+        action: {
+          label: "Ongedaan maken",
+          onClick: () => undoDelete(),
+        },
+      });
+      
+      setSelectedEvent(null);
+      setSidebarMode('events');
+      loadEvents();
+    } catch (error) {
+      console.error("Failed to delete event:", error);
+      toast.error("Kon gebeurtenis niet verwijderen");
+    }
+  };
+
+  const undoDelete = async () => {
+    if (!deletedEvent || !user) return;
+
+    try {
+      await supabase.from("calendar_events").insert({
+        user_id: user.id,
+        title: deletedEvent.title,
+        start_time: deletedEvent.start.toISOString(),
+        end_time: deletedEvent.end.toISOString(),
+        all_day: deletedEvent.allDay,
+        color: deletedEvent.color,
+        event_type: deletedEvent.eventType || 'anders',
+        description: deletedEvent.description || null,
+        location: deletedEvent.location || null,
+      });
+
+      toast.success("Gebeurtenis hersteld");
+      setDeletedEvent(null);
+      loadEvents();
+    } catch (error) {
+      console.error("Failed to restore event:", error);
+      toast.error("Kon gebeurtenis niet herstellen");
+    }
+  };
+
   const saveEvent = async () => {
     if (!user || !newEventTitle.trim()) return;
 
@@ -291,6 +378,8 @@ const Agenda = () => {
 
       toast.success("Gebeurtenis opgeslagen");
       loadEvents();
+      // Close the creation column
+      resetEventFormAndClose();
     } catch (error) {
       console.error("Failed to save event:", error);
       toast.error("Kon gebeurtenis niet opslaan");
@@ -390,6 +479,8 @@ const Agenda = () => {
 
       toast.success("Afspraak opgeslagen");
       loadEvents();
+      // Close the creation column
+      resetMeetingFormAndClose();
     } catch (error) {
       console.error("Failed to save meeting:", error);
       toast.error("Kon afspraak niet opslaan");
@@ -407,7 +498,7 @@ const Agenda = () => {
       const [calendarEventsResult, tasksResult, connectionsResult, googleConnectionResult] = await Promise.all([
         supabase
           .from('calendar_events')
-          .select('id, title, start_time, end_time, all_day, color, event_type')
+          .select('id, title, start_time, end_time, all_day, color, event_type, description, location')
           .eq('user_id', user.id),
         supabase
           .from('tasks')
@@ -428,6 +519,7 @@ const Agenda = () => {
 
       const localEvents: CalendarEvent[] = (calendarEventsResult.data || []).map((event: CalendarEventDB) => ({
         id: `local-${event.id}`,
+        dbId: event.id,
         title: event.title,
         start: new Date(event.start_time),
         end: new Date(event.end_time),
@@ -435,6 +527,8 @@ const Agenda = () => {
         source: 'local' as const,
         color: event.color,
         eventType: event.event_type,
+        description: event.description,
+        location: event.location,
       }));
 
       const taskEvents: CalendarEvent[] = (tasksResult.data || []).map((task: Task) => {
@@ -581,6 +675,15 @@ const Agenda = () => {
     return events.filter(event => isSameDay(event.start, selectedDate));
   }, [events, selectedDate]);
 
+  // Search results
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const query = searchQuery.toLowerCase();
+    return events.filter(event => 
+      event.title.toLowerCase().includes(query)
+    ).sort((a, b) => a.start.getTime() - b.start.getTime());
+  }, [events, searchQuery]);
+
   const getEventsForDay = (day: Date) => {
     return events.filter(event => isSameDay(event.start, day));
   };
@@ -643,12 +746,7 @@ const Agenda = () => {
     return `(${hours}h ${mins}m)`;
   };
 
-  const resetEventForm = async () => {
-    // Delete the event if it was being created
-    if (currentEventId) {
-      await supabase.from("calendar_events").delete().eq('id', currentEventId);
-      loadEvents();
-    }
+  const resetEventFormAndClose = () => {
     setNewEventTitle('Nieuwe Gebeurtenis');
     setNewEventDescription('');
     setNewEventStartTime('13:20');
@@ -663,13 +761,16 @@ const Agenda = () => {
     setSidebarMode('events');
   };
 
-  const resetMeetingForm = async () => {
-    // Delete the meeting if it was being created
-    if (currentMeetingId) {
-      await supabase.from("event_invitations").delete().eq('event_id', currentMeetingId);
-      await supabase.from("calendar_events").delete().eq('id', currentMeetingId);
+  const resetEventForm = async () => {
+    // Delete the event if it was being created
+    if (currentEventId) {
+      await supabase.from("calendar_events").delete().eq('id', currentEventId);
       loadEvents();
     }
+    resetEventFormAndClose();
+  };
+
+  const resetMeetingFormAndClose = () => {
     setMeetingTitle('Nieuwe Afspraak');
     setMeetingDescription('');
     setMeetingStartTime('13:20');
@@ -680,6 +781,136 @@ const Agenda = () => {
     setMeetingInvitees([]);
     setCurrentMeetingId(null);
     setSidebarMode('events');
+  };
+
+  const resetMeetingForm = async () => {
+    // Delete the meeting if it was being created
+    if (currentMeetingId) {
+      await supabase.from("event_invitations").delete().eq('event_id', currentMeetingId);
+      await supabase.from("calendar_events").delete().eq('id', currentMeetingId);
+      loadEvents();
+    }
+    resetMeetingFormAndClose();
+  };
+
+  // Click on event to open details
+  const handleEventClick = (event: CalendarEvent, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedEvent(event);
+    
+    if (event.source === 'local' && event.dbId) {
+      // Populate form with event data for editing
+      setNewEventTitle(event.title);
+      setNewEventStartDate(format(event.start, 'yyyy-MM-dd'));
+      setNewEventEndDate(format(event.end, 'yyyy-MM-dd'));
+      setNewEventStartTime(format(event.start, 'HH:mm'));
+      setNewEventEndTime(format(event.end, 'HH:mm'));
+      setNewEventAllDay(event.allDay);
+      setNewEventDescription(event.description || '');
+      setNewEventColor(event.color);
+      setNewEventType(event.eventType || 'anders');
+      setNewEventLocation(event.location || '');
+      setCurrentEventId(event.dbId);
+    }
+    
+    setSidebarMode('view');
+  };
+
+  // Drag handling for local events
+  const handleDragStart = useCallback((event: CalendarEvent, e: React.MouseEvent) => {
+    if (event.source !== 'local' || !event.dbId) return;
+    e.preventDefault();
+    setIsDragging(true);
+    setDragEventId(event.id);
+    setDragStartY(e.clientY);
+    setDragCurrentY(e.clientY);
+  }, []);
+
+  const handleDragMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setDragCurrentY(e.clientY);
+  }, [isDragging]);
+
+  const handleDragEnd = useCallback(async (hourHeight: number) => {
+    if (!isDragging || !dragEventId) return;
+    
+    const event = events.find(ev => ev.id === dragEventId);
+    if (!event || !event.dbId) {
+      setIsDragging(false);
+      setDragEventId(null);
+      return;
+    }
+
+    const deltaY = dragCurrentY - dragStartY;
+    const deltaMinutes = Math.round((deltaY / hourHeight) * 60 / 5) * 5; // Snap to 5-minute marks
+    
+    if (deltaMinutes !== 0) {
+      const newStart = new Date(event.start.getTime() + deltaMinutes * 60000);
+      const newEnd = new Date(event.end.getTime() + deltaMinutes * 60000);
+
+      try {
+        await supabase.from("calendar_events").update({
+          start_time: newStart.toISOString(),
+          end_time: newEnd.toISOString(),
+        }).eq('id', event.dbId);
+
+        loadEvents();
+      } catch (error) {
+        console.error("Failed to update event time:", error);
+        toast.error("Kon tijd niet aanpassen");
+      }
+    }
+
+    setIsDragging(false);
+    setDragEventId(null);
+  }, [isDragging, dragEventId, dragStartY, dragCurrentY, events]);
+
+  // Navigate to specific event
+  const navigateToEvent = (event: CalendarEvent) => {
+    setCurrentDate(event.start);
+    setSelectedDate(event.start);
+    setTimeFilter('dag');
+    setSearchQuery('');
+    setSidebarMode('events');
+  };
+
+  // Update selected event
+  const saveSelectedEvent = async () => {
+    if (!selectedEvent?.dbId || !user) return;
+
+    setIsSaving(true);
+    try {
+      const startDate = newEventStartDate || format(selectedDate, 'yyyy-MM-dd');
+      const startDateTime = newEventAllDay 
+        ? new Date(`${startDate}T00:00:00`) 
+        : new Date(`${startDate}T${newEventStartTime}:00`);
+      const endDateTime = newEventAllDay 
+        ? new Date(`${startDate}T23:59:59`) 
+        : new Date(`${startDate}T${newEventEndTime}:00`);
+
+      const { error } = await supabase.from("calendar_events").update({
+        title: newEventTitle.trim(),
+        description: newEventDescription || null,
+        start_time: startDateTime.toISOString(),
+        end_time: endDateTime.toISOString(),
+        all_day: newEventAllDay,
+        color: newEventColor,
+        event_type: newEventType,
+        location: newEventLocation || null,
+      }).eq('id', selectedEvent.dbId);
+
+      if (error) throw error;
+
+      toast.success("Gebeurtenis bijgewerkt");
+      loadEvents();
+      setSelectedEvent(null);
+      setSidebarMode('events');
+    } catch (error) {
+      console.error("Failed to update event:", error);
+      toast.error("Kon gebeurtenis niet bijwerken");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -795,7 +1026,12 @@ const Agenda = () => {
 
           {/* Week View */}
           {timeFilter === 'week' && (
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <div 
+              className="flex-1 flex flex-col min-h-0 overflow-hidden"
+              onMouseMove={handleDragMove}
+              onMouseUp={() => handleDragEnd(48)}
+              onMouseLeave={() => handleDragEnd(48)}
+            >
               <div className="grid grid-cols-8 gap-1 mb-2 flex-shrink-0">
                 <div className="w-14" />
                 {weekDays.map((day) => {
@@ -838,8 +1074,9 @@ const Agenda = () => {
                       {allDayEvents.slice(0, 2).map((event) => (
                         <div
                           key={event.id}
-                          className="text-xs px-1 py-0.5 rounded truncate mb-0.5"
+                          className="text-xs px-1 py-0.5 rounded truncate mb-0.5 cursor-pointer hover:opacity-80"
                           style={{ backgroundColor: event.color, color: 'white' }}
+                          onClick={(e) => handleEventClick(event, e)}
                         >
                           {event.title}
                         </div>
@@ -872,32 +1109,45 @@ const Agenda = () => {
                             />
                           ))}
                           
-                          {/* Current time indicator */}
-                          {isToday && (
-                            <div 
-                              className="absolute left-0 right-0 z-20 pointer-events-none"
-                              style={{ top: `${getCurrentTimePosition(48)}px` }}
-                            >
-                              <div className="flex items-center">
-                                <div className="w-2 h-2 rounded-full bg-destructive" />
-                                <div className="flex-1 h-0.5 bg-destructive" />
-                              </div>
+                          {/* Current time indicator on ALL days - dimmer on non-current */}
+                          <div 
+                            className="absolute left-0 right-0 z-20 pointer-events-none"
+                            style={{ top: `${getCurrentTimePosition(48)}px` }}
+                          >
+                            <div className="flex items-center">
+                              <div className={cn(
+                                "w-2 h-2 rounded-full",
+                                isToday ? "bg-destructive" : "bg-destructive/30"
+                              )} />
+                              <div className={cn(
+                                "flex-1 h-0.5",
+                                isToday ? "bg-destructive" : "bg-destructive/30"
+                              )} />
                             </div>
-                          )}
+                          </div>
                           
                           {dayEvents.map((event) => {
                             const startHour = event.start.getHours();
                             const style = getEventStyle(event, 48);
+                            const isDraggedEvent = dragEventId === event.id;
+                            const dragOffset = isDraggedEvent ? dragCurrentY - dragStartY : 0;
+                            
                             return (
                               <div
                                 key={event.id}
-                                className="absolute inset-x-0.5 text-xs px-1 py-0.5 rounded truncate z-10 overflow-hidden"
+                                className={cn(
+                                  "absolute inset-x-0.5 text-xs px-1 py-0.5 rounded truncate z-10 overflow-hidden",
+                                  event.source === 'local' && "cursor-grab active:cursor-grabbing",
+                                  isDraggedEvent && "opacity-75 shadow-lg"
+                                )}
                                 style={{ 
                                   backgroundColor: event.color, 
                                   color: 'white',
-                                  top: `calc(${startHour * 48}px + ${style.top})`,
+                                  top: `calc(${startHour * 48}px + ${style.top} + ${dragOffset}px)`,
                                   height: style.height,
                                 }}
+                                onClick={(e) => handleEventClick(event, e)}
+                                onMouseDown={(e) => handleDragStart(event, e)}
                               >
                                 {event.title}
                               </div>
@@ -914,15 +1164,21 @@ const Agenda = () => {
 
           {/* Day View */}
           {timeFilter === 'dag' && (
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <div 
+              className="flex-1 flex flex-col min-h-0 overflow-hidden"
+              onMouseMove={handleDragMove}
+              onMouseUp={() => handleDragEnd(64)}
+              onMouseLeave={() => handleDragEnd(64)}
+            >
               <div className="flex gap-2 mb-4 flex-shrink-0">
                 <div className="w-14 text-xs text-muted-foreground text-right pr-2 pt-1">Hele dag</div>
                 <div className="flex-1 min-h-[32px] flex flex-wrap gap-1">
                   {getAllDayEventsForDay(currentDate).map((event) => (
                     <div
                       key={event.id}
-                      className="text-xs px-2 py-1 rounded"
+                      className="text-xs px-2 py-1 rounded cursor-pointer hover:opacity-80"
                       style={{ backgroundColor: event.color, color: 'white' }}
+                      onClick={(e) => handleEventClick(event, e)}
                     >
                       {event.title}
                     </div>
@@ -958,16 +1214,25 @@ const Agenda = () => {
                     {getEventsForHourRange(currentDate).map((event) => {
                       const startHour = event.start.getHours();
                       const style = getEventStyle(event, 64);
+                      const isDraggedEvent = dragEventId === event.id;
+                      const dragOffset = isDraggedEvent ? dragCurrentY - dragStartY : 0;
+                      
                       return (
                         <div
                           key={event.id}
-                          className="absolute inset-x-1 text-sm px-2 py-1 rounded z-10 overflow-hidden"
+                          className={cn(
+                            "absolute inset-x-1 text-sm px-2 py-1 rounded z-10 overflow-hidden",
+                            event.source === 'local' && "cursor-grab active:cursor-grabbing",
+                            isDraggedEvent && "opacity-75 shadow-lg"
+                          )}
                           style={{ 
                             backgroundColor: event.color, 
                             color: 'white',
-                            top: `calc(${startHour * 64}px + ${style.top})`,
+                            top: `calc(${startHour * 64}px + ${style.top} + ${dragOffset}px)`,
                             height: style.height,
                           }}
+                          onClick={(e) => handleEventClick(event, e)}
+                          onMouseDown={(e) => handleDragStart(event, e)}
                         >
                           <span className="font-medium">{event.title}</span>
                           <span className="ml-2 opacity-80">
@@ -985,9 +1250,228 @@ const Agenda = () => {
 
         {/* Right Sidebar */}
         <div className="w-96 flex flex-col gap-4 overflow-hidden flex-shrink-0">
-          {/* Events/Create/Meeting Card */}
+          {/* Events/Create/Meeting/View/Search Card */}
           <div className="flex-1 bg-card rounded-2xl border border-border p-4 flex flex-col overflow-hidden min-h-0">
-            {sidebarMode === 'create' ? (
+            {sidebarMode === 'search' ? (
+              <>
+                {/* Search Results Header */}
+                <div className="flex items-center gap-2 mb-4 flex-shrink-0">
+                  <h3 className="text-lg font-semibold flex-1">Zoekresultaten</h3>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setSidebarMode('events');
+                    }}
+                    className="rounded-full"
+                  >
+                    Sluiten
+                  </Button>
+                </div>
+                
+                <ScrollArea className="flex-1">
+                  <div className="space-y-2 pr-2">
+                    {searchResults.length === 0 ? (
+                      <p className="text-muted-foreground text-sm text-center py-8">
+                        Geen resultaten gevonden
+                      </p>
+                    ) : (
+                      searchResults.map((event) => (
+                        <button
+                          key={event.id}
+                          onClick={() => navigateToEvent(event)}
+                          className="w-full p-3 rounded-xl border-l-4 text-left hover:bg-muted/50 transition-colors"
+                          style={{ 
+                            borderLeftColor: event.color,
+                            backgroundColor: `${event.color}10`
+                          }}
+                        >
+                          <p className="font-medium text-sm">{event.title}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {format(event.start, 'd MMMM yyyy', { locale: nl })}
+                            {!event.allDay && ` • ${format(event.start, 'HH:mm')}`}
+                          </p>
+                          <span 
+                            className="inline-block mt-2 text-xs px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: event.color, color: 'white' }}
+                          >
+                            {event.source === 'task' ? 'Taak' : event.source === 'zermelo' ? 'Zermelo' : event.source === 'google' ? 'Google' : event.source === 'outlook' ? 'Outlook' : 'Lokaal'}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+              </>
+            ) : sidebarMode === 'view' && selectedEvent ? (
+              <>
+                {/* View/Edit Event Header */}
+                <div className="flex items-center gap-2 mb-3 flex-shrink-0">
+                  {selectedEvent.source === 'local' ? (
+                    <Input
+                      value={newEventTitle}
+                      onChange={(e) => setNewEventTitle(e.target.value)}
+                      className="text-lg font-semibold flex-1 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
+                      placeholder="Gebeurtenis"
+                    />
+                  ) : (
+                    <h3 className="text-lg font-semibold flex-1">{selectedEvent.title}</h3>
+                  )}
+                  {selectedEvent.source === 'local' && (
+                    <Button
+                      size="sm"
+                      onClick={saveSelectedEvent}
+                      disabled={isSaving || !newEventTitle.trim()}
+                      className="rounded-full"
+                    >
+                      {isSaving ? 'Opslaan...' : 'Opslaan'}
+                    </Button>
+                  )}
+                </div>
+                
+                <ScrollArea className="flex-1 -mx-1 px-1">
+                  <div className="space-y-3 pr-2">
+                    {selectedEvent.source === 'local' ? (
+                      <>
+                        {/* Editable fields for local events */}
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Type</Label>
+                          <Select value={newEventType} onValueChange={setNewEventType}>
+                            <SelectTrigger className="h-8 text-sm">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {EVENT_TYPES.map((type) => (
+                                <SelectItem key={type.value} value={type.value}>
+                                  {type.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Datum</Label>
+                          <Input
+                            type="date"
+                            value={newEventStartDate}
+                            onChange={(e) => setNewEventStartDate(e.target.value)}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Tijd</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="time"
+                              value={newEventStartTime}
+                              onChange={(e) => setNewEventStartTime(e.target.value)}
+                              className="h-8 text-sm flex-1"
+                              disabled={newEventAllDay}
+                            />
+                            <span className="text-muted-foreground text-xs">-</span>
+                            <Input
+                              type="time"
+                              value={newEventEndTime}
+                              onChange={(e) => setNewEventEndTime(e.target.value)}
+                              className="h-8 text-sm flex-1"
+                              disabled={newEventAllDay}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs text-muted-foreground">Hele dag</Label>
+                          <Switch
+                            checked={newEventAllDay}
+                            onCheckedChange={setNewEventAllDay}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Locatie</Label>
+                          <div className="relative">
+                            <MapPin className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                            <Input
+                              value={newEventLocation}
+                              onChange={(e) => setNewEventLocation(e.target.value)}
+                              className="h-8 text-sm pl-7"
+                              placeholder="Voeg locatie toe"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Beschrijving</Label>
+                          <Textarea
+                            value={newEventDescription}
+                            onChange={(e) => setNewEventDescription(e.target.value)}
+                            className="min-h-[60px] text-sm resize-none"
+                            placeholder=""
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Kleur</Label>
+                          <div className="flex gap-1.5 flex-wrap">
+                            {EVENT_COLORS.map((color) => (
+                              <button
+                                key={color.name}
+                                onClick={() => setNewEventColor(color.value)}
+                                className={cn(
+                                  "w-5 h-5 rounded-full transition-all",
+                                  newEventColor === color.value && "ring-2 ring-offset-1 ring-primary"
+                                )}
+                                style={{ backgroundColor: color.value }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="pt-2">
+                          <p className="text-xs text-muted-foreground">
+                            Druk op Backspace om te verwijderen • Ctrl+Z om ongedaan te maken
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {/* Read-only view for imported events */}
+                        <div className="space-y-3">
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Datum & Tijd</Label>
+                            <p className="text-sm font-medium">
+                              {format(selectedEvent.start, 'd MMMM yyyy', { locale: nl })}
+                              {!selectedEvent.allDay && (
+                                <span className="text-muted-foreground ml-2">
+                                  {format(selectedEvent.start, 'HH:mm')} - {format(selectedEvent.end, 'HH:mm')}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Bron</Label>
+                            <span 
+                              className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full"
+                              style={{ backgroundColor: selectedEvent.color, color: 'white' }}
+                            >
+                              {selectedEvent.source === 'task' ? 'Taak' : selectedEvent.source === 'zermelo' ? 'Zermelo' : selectedEvent.source === 'google' ? 'Google' : selectedEvent.source === 'outlook' ? 'Outlook' : 'Lokaal'}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-muted-foreground">
+                            Geïmporteerde events kunnen niet worden bewerkt
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </ScrollArea>
+              </>
+            ) : sidebarMode === 'create' ? (
               <>
                 {/* Create Event Header - Editable Title with Save Button */}
                 <div className="flex items-center gap-2 mb-3 flex-shrink-0">
@@ -1001,9 +1485,8 @@ const Agenda = () => {
                     size="sm"
                     onClick={saveEvent}
                     disabled={isSaving || !newEventTitle.trim()}
-                    className="rounded-full gap-1"
+                    className="rounded-full"
                   >
-                    <Save className="w-4 h-4" />
                     {isSaving ? 'Opslaan...' : 'Opslaan'}
                   </Button>
                 </div>
@@ -1145,9 +1628,8 @@ const Agenda = () => {
                     size="sm"
                     onClick={saveMeeting}
                     disabled={isSaving || !meetingTitle.trim()}
-                    className="rounded-full gap-1"
+                    className="rounded-full"
                   >
-                    <Save className="w-4 h-4" />
                     {isSaving ? 'Opslaan...' : 'Opslaan'}
                   </Button>
                 </div>
@@ -1277,9 +1759,10 @@ const Agenda = () => {
                   <ScrollArea className="flex-1">
                     <div className="space-y-2 pr-2">
                       {eventsForSelectedDate.map((event) => (
-                        <div
+                        <button
                           key={event.id}
-                          className="p-3 rounded-xl border-l-4"
+                          onClick={(e) => handleEventClick(event, e)}
+                          className="w-full p-3 rounded-xl border-l-4 text-left hover:bg-muted/50 transition-colors"
                           style={{ 
                             borderLeftColor: event.color,
                             backgroundColor: `${event.color}10`
@@ -1299,7 +1782,7 @@ const Agenda = () => {
                           >
                             {event.source === 'task' ? 'Taak' : event.source === 'zermelo' ? 'Zermelo' : event.source === 'google' ? 'Google' : event.source === 'outlook' ? 'Outlook' : 'Lokaal'}
                           </span>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </ScrollArea>
@@ -1311,7 +1794,12 @@ const Agenda = () => {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        if (e.target.value.trim()) {
+                          setSidebarMode('search');
+                        }
+                      }}
                       placeholder="Zoeken in Agenda"
                       className="pl-9 h-10"
                     />
@@ -1362,6 +1850,20 @@ const Agenda = () => {
               onClick={resetMeetingForm}
             >
               Annuleren
+            </Button>
+          )}
+
+          {/* Back button in view mode */}
+          {sidebarMode === 'view' && (
+            <Button
+              variant="outline"
+              className="w-full h-12 rounded-xl flex-shrink-0"
+              onClick={() => {
+                setSelectedEvent(null);
+                setSidebarMode('events');
+              }}
+            >
+              Terug
             </Button>
           )}
         </div>

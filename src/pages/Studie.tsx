@@ -6,9 +6,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Users, X, UserPlus, Play, Pause, Clock } from "lucide-react";
+import { Plus, Users, X, UserPlus, Play, Pause, Clock, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { format, startOfDay, endOfDay } from "date-fns";
 
 interface StudyGroup {
   id: string;
@@ -28,6 +30,7 @@ interface GroupMember {
     display_name: string | null;
   };
   isStudying?: boolean;
+  todayStudyTime?: number;
 }
 
 interface Profile {
@@ -42,6 +45,7 @@ interface StudySession {
   user_id: string;
   started_at: string;
   is_active: boolean;
+  duration_minutes?: number;
 }
 
 export default function Studie() {
@@ -56,12 +60,16 @@ export default function Studie() {
   const [isSearching, setIsSearching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
+  // Selected group for detail view
+  const [selectedGroup, setSelectedGroup] = useState<StudyGroup | null>(null);
+
   // Study timer state
   const [isStudying, setIsStudying] = useState(false);
   const [studyStartTime, setStudyStartTime] = useState<Date | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [activeSessions, setActiveSessions] = useState<Map<string, StudySession>>(new Map());
+  const [todayStudyTimes, setTodayStudyTimes] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (user) {
@@ -102,6 +110,13 @@ export default function Studie() {
     return () => clearInterval(interval);
   }, [isStudying, studyStartTime]);
 
+  // Reload active sessions when groups change
+  useEffect(() => {
+    if (groups.length > 0) {
+      loadActiveSessions();
+    }
+  }, [groups]);
+
   const checkActiveSession = async () => {
     if (!user) return;
 
@@ -135,17 +150,40 @@ export default function Studie() {
 
     if (groupMemberIds.size === 0) return;
 
-    const { data } = await supabase
+    const memberIdsArray = Array.from(groupMemberIds);
+
+    // Load active sessions
+    const { data: activeSess } = await supabase
       .from("study_sessions")
       .select("*")
-      .in("user_id", Array.from(groupMemberIds))
+      .in("user_id", memberIdsArray)
       .eq("is_active", true);
 
     const sessionsMap = new Map<string, StudySession>();
-    data?.forEach(session => {
+    activeSess?.forEach(session => {
       sessionsMap.set(session.user_id, session);
     });
     setActiveSessions(sessionsMap);
+
+    // Load today's completed study time for each member
+    const today = new Date();
+    const dayStart = startOfDay(today).toISOString();
+    const dayEnd = endOfDay(today).toISOString();
+
+    const { data: todaySessions } = await supabase
+      .from("study_sessions")
+      .select("user_id, duration_minutes, started_at, is_active")
+      .in("user_id", memberIdsArray)
+      .gte("started_at", dayStart)
+      .lte("started_at", dayEnd);
+
+    const timesMap = new Map<string, number>();
+    todaySessions?.forEach(session => {
+      const current = timesMap.get(session.user_id) || 0;
+      const duration = session.duration_minutes || 0;
+      timesMap.set(session.user_id, current + duration);
+    });
+    setTodayStudyTimes(timesMap);
   };
 
   const startStudySession = async () => {
@@ -209,6 +247,15 @@ export default function Studie() {
       return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatMinutes = (minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours > 0) {
+      return `${hours}u ${mins}m`;
+    }
+    return `${mins}m`;
   };
 
   const loadGroups = async () => {
@@ -377,7 +424,6 @@ export default function Studie() {
 
         if (membersError) {
           console.error("Members insertion error:", membersError);
-          // Don't throw here, group was created successfully
         }
 
         // Send notifications to invited users
@@ -407,7 +453,187 @@ export default function Studie() {
     }
   };
 
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
   if (!user) return null;
+
+  // Group detail view
+  if (selectedGroup) {
+    const acceptedMembers = selectedGroup.members?.filter(m => m.status === 'accepted') || [];
+    const pendingMembers = selectedGroup.members?.filter(m => m.status === 'pending') || [];
+
+    return (
+      <div className="w-full">
+        <div className="flex items-center gap-4 mb-8">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSelectedGroup(null)}
+            className="rounded-full"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-4xl font-bold text-foreground">{selectedGroup.name}</h1>
+            <p className="text-muted-foreground">
+              {acceptedMembers.length + 1} leden
+            </p>
+          </div>
+        </div>
+
+        {/* Study Timer Card */}
+        <Card className="mb-8">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center ${isStudying ? 'bg-primary/10' : 'bg-muted'}`}>
+                  <Clock className={`w-8 h-8 ${isStudying ? 'text-primary' : 'text-muted-foreground'}`} />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold">Studietimer</h2>
+                  <p className="text-muted-foreground">
+                    {isStudying ? 'Je bent aan het studeren' : 'Start een studiesessie'}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-6">
+                <div className="text-right">
+                  <p className="text-4xl font-mono font-bold tabular-nums">
+                    {formatTime(elapsedTime)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {isStudying ? 'Huidige sessie' : 'Verstreken tijd'}
+                  </p>
+                </div>
+                
+                <Button
+                  size="lg"
+                  onClick={isStudying ? stopStudySession : startStudySession}
+                  className={`rounded-full w-14 h-14 p-0 ${isStudying ? 'bg-destructive hover:bg-destructive/90' : ''}`}
+                >
+                  {isStudying ? (
+                    <Pause className="w-6 h-6" />
+                  ) : (
+                    <Play className="w-6 h-6 ml-1" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Group Members */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold">Groepsleden</h2>
+          
+          {/* Owner */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-4">
+                <Avatar className="w-12 h-12">
+                  <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                    JIJ
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className={`font-medium ${isStudying ? 'text-green-600' : ''}`}>
+                      Jij (Beheerder)
+                    </p>
+                    {isStudying && (
+                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    )}
+                  </div>
+                  {isStudying && (
+                    <p className="text-sm text-green-600">
+                      Aan het studeren • {formatTime(elapsedTime)} vandaag
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Accepted Members */}
+          {acceptedMembers.map((member) => {
+            const memberIsStudying = activeSessions.has(member.user_id);
+            const activeSession = activeSessions.get(member.user_id);
+            const todayTime = todayStudyTimes.get(member.user_id) || 0;
+            const currentSessionTime = activeSession 
+              ? Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 60000)
+              : 0;
+            const totalTodayMinutes = todayTime + currentSessionTime;
+            const displayName = member.profile?.display_name || member.profile?.full_name || "Onbekend";
+
+            return (
+              <Card key={member.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <Avatar className="w-12 h-12">
+                      <AvatarFallback className={`font-semibold ${memberIsStudying ? 'bg-green-100 text-green-700' : 'bg-muted'}`}>
+                        {getInitials(displayName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className={`font-medium ${memberIsStudying ? 'text-green-600' : ''}`}>
+                          {displayName}
+                        </p>
+                        {memberIsStudying && (
+                          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">@{member.profile?.username}</p>
+                      {memberIsStudying && (
+                        <p className="text-sm text-green-600 mt-1">
+                          Aan het studeren • {formatMinutes(totalTodayMinutes)} vandaag
+                        </p>
+                      )}
+                      {!memberIsStudying && totalTodayMinutes > 0 && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {formatMinutes(totalTodayMinutes)} gestudeerd vandaag
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+
+          {/* Pending Members */}
+          {pendingMembers.length > 0 && (
+            <>
+              <h3 className="text-lg font-medium text-muted-foreground mt-6">Uitgenodigd</h3>
+              {pendingMembers.map((member) => {
+                const displayName = member.profile?.display_name || member.profile?.full_name || "Onbekend";
+                return (
+                  <Card key={member.id} className="opacity-60">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-4">
+                        <Avatar className="w-12 h-12">
+                          <AvatarFallback className="bg-yellow-100 text-yellow-700 font-semibold">
+                            {getInitials(displayName)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <p className="font-medium">{displayName}</p>
+                          <p className="text-sm text-yellow-600">Wacht op reactie</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">
@@ -570,7 +796,11 @@ export default function Studie() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {groups.map((group) => (
-            <Card key={group.id} className="hover:shadow-md transition-shadow">
+            <Card 
+              key={group.id} 
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => setSelectedGroup(group)}
+            >
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
