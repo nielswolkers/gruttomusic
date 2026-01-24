@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -8,10 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { User, Mail, LogOut, Trash2 } from "lucide-react";
+import { User, Mail, LogOut, Trash2, Camera, Clock } from "lucide-react";
 import { getStoredAccessToken, logout as spotifyLogout, refreshAccessToken, redirectToSpotifyAuth } from "@/auth/spotifyAuth";
 import { getUserProfile } from "@/api/spotifyApi";
 import CalendarIntegrations from "@/components/account/CalendarIntegrations";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Slider } from "@/components/ui/slider";
 
 const Account = () => {
   const navigate = useNavigate();
@@ -20,8 +22,16 @@ const Account = () => {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [profile, setProfile] = useState<{ full_name: string; username: string; display_name: string | null } | null>(null);
+  const [profile, setProfile] = useState<{ full_name: string; username: string; display_name: string | null; avatar_url: string | null; study_goal_minutes: number } | null>(null);
   const [formData, setFormData] = useState({ full_name: "", username: "" });
+  
+  // Profile picture
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  
+  // Study goal
+  const [studyGoalHours, setStudyGoalHours] = useState(2);
+  const [savingGoal, setSavingGoal] = useState(false);
   
   // Spotify state
   const [spotifyConnected, setSpotifyConnected] = useState(false);
@@ -41,6 +51,7 @@ const Account = () => {
       if (error) throw error;
       setProfile(data);
       setFormData({ full_name: data.full_name || "", username: data.username || "" });
+      setStudyGoalHours(Math.round((data.study_goal_minutes || 120) / 60 * 10) / 10);
     } catch (error) {
       console.error("Failed to load profile:", error);
     } finally {
@@ -128,6 +139,79 @@ const Account = () => {
     }
   };
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error("Alleen afbeeldingen zijn toegestaan");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Afbeelding mag maximaal 5MB zijn");
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `avatars/${user.id}.${fileExt}`;
+
+      // Upload to storage
+      const { error: uploadError } = await supabase.storage
+        .from('user-files')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('user-files')
+        .getPublicUrl(filePath);
+
+      // Update profile with avatar URL
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: urlData.publicUrl })
+        .eq('user_id', user.id);
+
+      if (updateError) throw updateError;
+
+      toast.success("Profielfoto bijgewerkt");
+      loadProfile();
+    } catch (error) {
+      console.error("Avatar upload error:", error);
+      toast.error("Kon profielfoto niet uploaden");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleStudyGoalChange = async (value: number[]) => {
+    setStudyGoalHours(value[0]);
+  };
+
+  const saveStudyGoal = async () => {
+    if (!user) return;
+    setSavingGoal(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ study_goal_minutes: Math.round(studyGoalHours * 60) })
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      toast.success("Studiedoel opgeslagen");
+    } catch (error) {
+      toast.error("Kon studiedoel niet opslaan");
+    } finally {
+      setSavingGoal(false);
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
     navigate("/auth");
@@ -181,6 +265,10 @@ const Account = () => {
     }
   };
 
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
   }
@@ -195,6 +283,42 @@ const Account = () => {
           <CardTitle className="text-xl font-semibold">Profiel</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Avatar with upload */}
+          <div className="flex items-center gap-4 mb-6">
+            <div className="relative">
+              <Avatar className="w-20 h-20">
+                {profile?.avatar_url ? (
+                  <AvatarImage src={profile.avatar_url} alt="Profielfoto" />
+                ) : null}
+                <AvatarFallback className="text-xl bg-primary/10 text-primary">
+                  {profile?.full_name ? getInitials(profile.full_name) : <User className="w-8 h-8" />}
+                </AvatarFallback>
+              </Avatar>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingAvatar}
+                className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
+              >
+                {uploadingAvatar ? (
+                  <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                ) : (
+                  <Camera className="w-4 h-4" />
+                )}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarUpload}
+                className="hidden"
+              />
+            </div>
+            <div>
+              <p className="font-medium text-lg">{profile?.full_name}</p>
+              <p className="text-sm text-muted-foreground">@{profile?.username}</p>
+            </div>
+          </div>
+
           {!isEditing ? (
             <>
               <div className="flex items-center gap-4">
@@ -264,6 +388,57 @@ const Account = () => {
               </div>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Preferences Card */}
+      <Card className="rounded-2xl border-border">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-xl font-semibold">Voorkeuren</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Study Goal Setting */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <Clock className="w-5 h-5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium">Dagelijks studiedoel</p>
+                <p className="text-sm text-muted-foreground">
+                  Stel je dagelijkse studietijd doel in
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-primary">{studyGoalHours}u</p>
+                <p className="text-xs text-muted-foreground">{Math.round(studyGoalHours * 60)} minuten</p>
+              </div>
+            </div>
+            
+            <div className="px-1">
+              <Slider
+                value={[studyGoalHours]}
+                onValueChange={handleStudyGoalChange}
+                min={0.5}
+                max={8}
+                step={0.5}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                <span>30 min</span>
+                <span>8 uur</span>
+              </div>
+            </div>
+
+            <Button 
+              onClick={saveStudyGoal} 
+              disabled={savingGoal}
+              variant="outline"
+              className="rounded-full"
+            >
+              {savingGoal ? "Opslaan..." : "Studiedoel opslaan"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

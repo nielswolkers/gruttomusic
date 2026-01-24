@@ -336,6 +336,58 @@ export type Database = {
           },
         ]
       }
+      group_messages: {
+        Row: {
+          content: string | null
+          created_at: string
+          file_id: string | null
+          group_id: string
+          id: string
+          sender_id: string
+          task_id: string | null
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          file_id?: string | null
+          group_id: string
+          id?: string
+          sender_id: string
+          task_id?: string | null
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          file_id?: string | null
+          group_id?: string
+          id?: string
+          sender_id?: string
+          task_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_messages_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_messages_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "study_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_messages_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string
@@ -379,28 +431,34 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_url: string | null
           created_at: string
           display_name: string | null
           full_name: string
           id: string
+          study_goal_minutes: number
           updated_at: string
           user_id: string
           username: string
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
           display_name?: string | null
           full_name: string
           id?: string
+          study_goal_minutes?: number
           updated_at?: string
           user_id: string
           username: string
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
           display_name?: string | null
           full_name?: string
           id?: string
+          study_goal_minutes?: number
           updated_at?: string
           user_id?: string
           username?: string
