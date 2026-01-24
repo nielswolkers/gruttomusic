@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Users, X, UserPlus } from "lucide-react";
+import { Plus, Users, X, UserPlus, Play, Pause, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -27,6 +27,7 @@ interface GroupMember {
     full_name: string;
     display_name: string | null;
   };
+  isStudying?: boolean;
 }
 
 interface Profile {
@@ -34,6 +35,13 @@ interface Profile {
   username: string;
   full_name: string;
   display_name: string | null;
+}
+
+interface StudySession {
+  id: string;
+  user_id: string;
+  started_at: string;
+  is_active: boolean;
 }
 
 export default function Studie() {
@@ -48,11 +56,160 @@ export default function Studie() {
   const [isSearching, setIsSearching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
+  // Study timer state
+  const [isStudying, setIsStudying] = useState(false);
+  const [studyStartTime, setStudyStartTime] = useState<Date | null>(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [activeSessions, setActiveSessions] = useState<Map<string, StudySession>>(new Map());
+
   useEffect(() => {
     if (user) {
       loadGroups();
+      checkActiveSession();
+      loadActiveSessions();
+
+      // Subscribe to study session changes
+      const channel = supabase
+        .channel('study-sessions-realtime')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'study_sessions',
+          },
+          () => {
+            loadActiveSessions();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [user]);
+
+  // Timer update effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isStudying && studyStartTime) {
+      interval = setInterval(() => {
+        setElapsedTime(Math.floor((Date.now() - studyStartTime.getTime()) / 1000));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isStudying, studyStartTime]);
+
+  const checkActiveSession = async () => {
+    if (!user) return;
+
+    const { data } = await supabase
+      .from("study_sessions")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (data) {
+      setIsStudying(true);
+      setStudyStartTime(new Date(data.started_at));
+      setCurrentSessionId(data.id);
+      setElapsedTime(Math.floor((Date.now() - new Date(data.started_at).getTime()) / 1000));
+    }
+  };
+
+  const loadActiveSessions = async () => {
+    if (!user) return;
+
+    // Get all group members' user IDs
+    const groupMemberIds = new Set<string>();
+    groups.forEach(group => {
+      group.members?.forEach(member => {
+        if (member.status === 'accepted') {
+          groupMemberIds.add(member.user_id);
+        }
+      });
+    });
+
+    if (groupMemberIds.size === 0) return;
+
+    const { data } = await supabase
+      .from("study_sessions")
+      .select("*")
+      .in("user_id", Array.from(groupMemberIds))
+      .eq("is_active", true);
+
+    const sessionsMap = new Map<string, StudySession>();
+    data?.forEach(session => {
+      sessionsMap.set(session.user_id, session);
+    });
+    setActiveSessions(sessionsMap);
+  };
+
+  const startStudySession = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("study_sessions")
+        .insert({
+          user_id: user.id,
+          is_active: true,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setIsStudying(true);
+      setStudyStartTime(new Date(data.started_at));
+      setCurrentSessionId(data.id);
+      setElapsedTime(0);
+      toast.success("Studiesessie gestart");
+    } catch (error) {
+      console.error("Failed to start session:", error);
+      toast.error("Kon studiesessie niet starten");
+    }
+  };
+
+  const stopStudySession = async () => {
+    if (!user || !currentSessionId) return;
+
+    try {
+      const durationMinutes = Math.floor(elapsedTime / 60);
+
+      await supabase
+        .from("study_sessions")
+        .update({
+          is_active: false,
+          ended_at: new Date().toISOString(),
+          duration_minutes: durationMinutes,
+        })
+        .eq("id", currentSessionId);
+
+      setIsStudying(false);
+      setStudyStartTime(null);
+      setCurrentSessionId(null);
+      setElapsedTime(0);
+      toast.success(`Studiesessie beëindigd (${formatTime(elapsedTime)})`);
+    } catch (error) {
+      console.error("Failed to stop session:", error);
+      toast.error("Kon studiesessie niet stoppen");
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const loadGroups = async () => {
     if (!user) return;
@@ -355,6 +512,48 @@ export default function Studie() {
         </Dialog>
       </div>
 
+      {/* Study Timer Card */}
+      <Card className="mb-8">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center ${isStudying ? 'bg-primary/10' : 'bg-muted'}`}>
+                <Clock className={`w-8 h-8 ${isStudying ? 'text-primary' : 'text-muted-foreground'}`} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold">Studietimer</h2>
+                <p className="text-muted-foreground">
+                  {isStudying ? 'Je bent aan het studeren' : 'Start een studiesessie'}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-6">
+              <div className="text-right">
+                <p className="text-4xl font-mono font-bold tabular-nums">
+                  {formatTime(elapsedTime)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {isStudying ? 'Huidige sessie' : 'Verstreken tijd'}
+                </p>
+              </div>
+              
+              <Button
+                size="lg"
+                onClick={isStudying ? stopStudySession : startStudySession}
+                className={`rounded-full w-14 h-14 p-0 ${isStudying ? 'bg-destructive hover:bg-destructive/90' : ''}`}
+              >
+                {isStudying ? (
+                  <Pause className="w-6 h-6" />
+                ) : (
+                  <Play className="w-6 h-6 ml-1" />
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -396,19 +595,27 @@ export default function Studie() {
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground font-medium">Leden</p>
                     <div className="flex flex-wrap gap-1">
-                      {group.members.slice(0, 5).map((member) => (
-                        <span
-                          key={member.id}
-                          className={`text-xs px-2 py-1 rounded-full ${
-                            member.status === "pending"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {member.profile?.display_name || member.profile?.full_name || "Onbekend"}
-                          {member.status === "pending" && " (wachtend)"}
-                        </span>
-                      ))}
+                      {group.members.slice(0, 5).map((member) => {
+                        const memberIsStudying = activeSessions.has(member.user_id);
+                        return (
+                          <span
+                            key={member.id}
+                            className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${
+                              member.status === "pending"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : memberIsStudying
+                                ? "bg-green-100 text-green-800"
+                                : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            {memberIsStudying && (
+                              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                            )}
+                            {member.profile?.display_name || member.profile?.full_name || "Onbekend"}
+                            {member.status === "pending" && " (wachtend)"}
+                          </span>
+                        );
+                      })}
                       {group.members.length > 5 && (
                         <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
                           +{group.members.length - 5} meer

@@ -24,12 +24,17 @@ interface Notification {
 interface EventInvitation {
   id: string;
   event_id: string;
+  inviter_id: string;
   status: string;
   event?: {
     id: string;
     title: string;
     start_time: string;
     end_time: string;
+    color: string;
+    description: string | null;
+    location: string | null;
+    all_day: boolean;
   };
   inviter?: {
     full_name: string;
@@ -41,6 +46,7 @@ interface GroupInvitation {
   id: string;
   group_id: string;
   status: string;
+  invited_by: string;
   group?: {
     id: string;
     name: string;
@@ -90,7 +96,7 @@ const Meldingen = () => {
     try {
       const { data: invitations } = await supabase
         .from("event_invitations")
-        .select("id, event_id, status")
+        .select("id, event_id, inviter_id, status")
         .eq("invitee_id", user.id)
         .eq("status", "pending");
 
@@ -103,11 +109,11 @@ const Meldingen = () => {
       const eventIds = invitations.map(i => i.event_id);
       const { data: events } = await supabase
         .from("calendar_events")
-        .select("id, title, start_time, end_time, user_id")
+        .select("id, title, start_time, end_time, color, description, location, all_day, user_id")
         .in("id", eventIds);
 
       // Load inviter profiles
-      const inviterIds = events?.map(e => e.user_id) || [];
+      const inviterIds = invitations.map(i => i.inviter_id);
       const { data: profiles } = await supabase
         .from("profiles")
         .select("user_id, full_name, display_name")
@@ -116,7 +122,7 @@ const Meldingen = () => {
       const enrichedInvitations = invitations.map(inv => ({
         ...inv,
         event: events?.find(e => e.id === inv.event_id),
-        inviter: profiles?.find(p => p.user_id === events?.find(e => e.id === inv.event_id)?.user_id)
+        inviter: profiles?.find(p => p.user_id === inv.inviter_id)
       }));
 
       setEventInvitations(enrichedInvitations);
@@ -206,24 +212,62 @@ const Meldingen = () => {
     }
   };
 
-  const respondToEventInvitation = async (invitationId: string, accept: boolean) => {
+  const respondToEventInvitation = async (invitation: EventInvitation, accept: boolean) => {
+    if (!user) return;
+
     try {
+      // Update the invitation status
       await supabase
         .from("event_invitations")
         .update({ 
           status: accept ? "accepted" : "declined",
           responded_at: new Date().toISOString()
         })
-        .eq("id", invitationId);
+        .eq("id", invitation.id);
+
+      // If accepted, copy the event to the invitee's calendar
+      if (accept && invitation.event) {
+        await supabase.from("calendar_events").insert({
+          user_id: user.id,
+          title: invitation.event.title,
+          start_time: invitation.event.start_time,
+          end_time: invitation.event.end_time,
+          all_day: invitation.event.all_day,
+          color: invitation.event.color,
+          event_type: 'meeting',
+          description: invitation.event.description,
+          location: invitation.event.location,
+        });
+      }
+
+      // Send notification to the original inviter about the response
+      const { data: inviterProfile } = await supabase
+        .from("profiles")
+        .select("full_name, display_name")
+        .eq("user_id", user.id)
+        .single();
+
+      const responderName = inviterProfile?.display_name || inviterProfile?.full_name || "Iemand";
+      const statusMessage = accept ? "geaccepteerd" : "afgewezen";
+
+      await supabase.from("notifications").insert({
+        recipient_id: invitation.inviter_id,
+        sender_id: user.id,
+        type: 'meeting_response',
+        message: `${responderName} heeft je uitnodiging voor "${invitation.event?.title}" ${statusMessage}.`,
+      });
 
       toast.success(accept ? "Uitnodiging geaccepteerd" : "Uitnodiging afgewezen");
       loadEventInvitations();
     } catch (error) {
+      console.error("Error responding to invitation:", error);
       toast.error("Kon niet reageren op uitnodiging");
     }
   };
 
-  const respondToGroupInvitation = async (invitationId: string, accept: boolean) => {
+  const respondToGroupInvitation = async (invitation: GroupInvitation, accept: boolean) => {
+    if (!user) return;
+
     try {
       await supabase
         .from("group_members")
@@ -231,12 +275,40 @@ const Meldingen = () => {
           status: accept ? "accepted" : "declined",
           responded_at: new Date().toISOString()
         })
-        .eq("id", invitationId);
+        .eq("id", invitation.id);
+
+      // Send notification to the inviter about the response
+      const { data: responderProfile } = await supabase
+        .from("profiles")
+        .select("full_name, display_name")
+        .eq("user_id", user.id)
+        .single();
+
+      const responderName = responderProfile?.display_name || responderProfile?.full_name || "Iemand";
+      const statusMessage = accept ? "geaccepteerd" : "afgewezen";
+
+      await supabase.from("notifications").insert({
+        recipient_id: invitation.invited_by,
+        sender_id: user.id,
+        type: 'group_response',
+        message: `${responderName} heeft je uitnodiging voor de groep "${invitation.group?.name}" ${statusMessage}.`,
+      });
 
       toast.success(accept ? "Uitnodiging geaccepteerd" : "Uitnodiging afgewezen");
       loadGroupInvitations();
     } catch (error) {
+      console.error("Error responding to group invitation:", error);
       toast.error("Kon niet reageren op uitnodiging");
+    }
+  };
+
+  const dismissEventInvitation = async (invitationId: string) => {
+    try {
+      await supabase.from("event_invitations").delete().eq("id", invitationId);
+      loadEventInvitations();
+      toast.success("Melding verwijderd");
+    } catch (error) {
+      toast.error("Kon melding niet verwijderen");
     }
   };
 
@@ -334,6 +406,7 @@ const Meldingen = () => {
                   size="sm" 
                   variant="secondary" 
                   className="rounded-full px-4 h-8 text-xs bg-muted hover:bg-muted/80 shrink-0"
+                  onClick={() => dismissEventInvitation(invitation.id)}
                 >
                   Wis
                 </Button>
@@ -360,7 +433,7 @@ const Meldingen = () => {
                   size="sm" 
                   variant="outline" 
                   className="rounded-full h-9"
-                  onClick={() => respondToEventInvitation(invitation.id, true)}
+                  onClick={() => respondToEventInvitation(invitation, true)}
                 >
                   <Check className="w-4 h-4 mr-2" />
                   Bevestig
@@ -369,10 +442,10 @@ const Meldingen = () => {
                   size="sm" 
                   variant="outline" 
                   className="rounded-full h-9 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10"
-                  onClick={() => respondToEventInvitation(invitation.id, false)}
+                  onClick={() => respondToEventInvitation(invitation, false)}
                 >
                   <X className="w-4 h-4 mr-2" />
-                  Wijger
+                  Weiger
                 </Button>
               </div>
             </div>
@@ -404,7 +477,7 @@ const Meldingen = () => {
                   size="sm" 
                   variant="outline" 
                   className="rounded-full h-9"
-                  onClick={() => respondToGroupInvitation(invitation.id, true)}
+                  onClick={() => respondToGroupInvitation(invitation, true)}
                 >
                   <Check className="w-4 h-4 mr-2" />
                   Accepteren
@@ -413,7 +486,7 @@ const Meldingen = () => {
                   size="sm" 
                   variant="outline" 
                   className="rounded-full h-9 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10"
-                  onClick={() => respondToGroupInvitation(invitation.id, false)}
+                  onClick={() => respondToGroupInvitation(invitation, false)}
                 >
                   <X className="w-4 h-4 mr-2" />
                   Afwijzen
@@ -480,7 +553,7 @@ const Meldingen = () => {
                     <Button 
                       size="sm" 
                       variant="outline" 
-                      className="rounded-full h-9" 
+                      className="rounded-full h-9"
                       onClick={() => handleRecoverFile(notification)}
                     >
                       <Undo2 className="w-4 h-4 mr-2" />
@@ -489,16 +562,16 @@ const Meldingen = () => {
                     <Button 
                       size="sm" 
                       variant="outline" 
-                      className="rounded-full h-9 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10" 
+                      className="rounded-full h-9 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10"
                       onClick={() => handlePermanentDelete(notification)}
                     >
                       <Trash2 className="w-4 h-4 mr-2" />
-                      Verwijder
+                      Verwijder permanent
                     </Button>
                   </div>
                 )}
 
-                <p className="text-sm text-muted-foreground text-right">
+                <p className="text-xs text-muted-foreground text-right">
                   {formatRelativeDate(notification.created_at)}
                 </p>
               </div>
