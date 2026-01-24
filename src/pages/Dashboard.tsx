@@ -118,7 +118,7 @@ export default function Dashboard() {
               {loadingTests ? <div className="animate-pulse space-y-3">{[1,2,3].map(i => <div key={i} className="h-12 bg-muted rounded-lg" />)}</div> : upcomingTests.length === 0 ? <p className="text-sm text-muted-foreground">Geen aankomende toetsen</p> : (
                 <div className="space-y-3">
                   {upcomingTests.map((test) => (
-                    <button key={test.id} onClick={() => navigate('/agenda')} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-colors text-left">
+                    <button key={test.id} onClick={() => navigate(`/agenda?date=${test.start_time.split('T')[0]}`)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-colors text-left">
                       <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: `${test.color}20` }}>
                         <div style={{ color: test.color }}>{getEventIcon(test.event_type)}</div>
                       </div>

@@ -122,12 +122,12 @@ const Bestanden = () => {
             />
           </div>
 
-          <Button onClick={() => setShowFolderDialog(true)} variant="outline" className="rounded-full gap-2 h-11 px-5 border-primary text-primary hover:bg-primary/5">
+          <Button onClick={() => setShowFolderDialog(true)} variant="ghost" size="sm" className="rounded-full gap-2 h-9 px-4">
             <FolderPlus className="w-4 h-4" />
             Voeg map toe
           </Button>
 
-          <Button onClick={() => setShowUpload(!showUpload)} variant="outline" className="rounded-full gap-2 h-11 px-5 border-primary text-primary hover:bg-primary/5">
+          <Button onClick={() => setShowUpload(!showUpload)} variant="ghost" size="sm" className="rounded-full gap-2 h-9 px-4">
             <Upload className="w-4 h-4" />
             Importeer
           </Button>

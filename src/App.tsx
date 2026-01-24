@@ -64,6 +64,8 @@ function AppRoutes() {
         <Route path="/bestanden" element={<Bestanden />} />
         <Route path="/bestanden/folder/:folderId" element={<FolderView />} />
         <Route path="/bestanden/preview/:fileId" element={<FilePreview />} />
+        <Route path="/notities" element={<PlaceholderPage />} />
+        <Route path="/ontdekken" element={<PlaceholderPage />} />
         <Route path="/meldingen" element={<Meldingen />} />
         <Route path="/account" element={<Account />} />
         <Route path="/profiel/:username" element={<UserProfile />} />

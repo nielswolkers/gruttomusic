@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { ChevronLeft, ChevronRight, Plus, Monitor, Search, MapPin } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, parseISO, addWeeks, subWeeks, addDays, subDays } from "date-fns";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { nl } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -36,6 +37,8 @@ interface CalendarEvent {
   description?: string;
   location?: string;
   dbId?: string; // Original database ID for editing
+  taskId?: string; // For task events - store the original task ID
+  mergedSources?: string[]; // If this event was merged from multiple sources
 }
 
 interface Task {
@@ -130,6 +133,76 @@ const parseICSDate = (dateStr: string): Date => {
   return new Date(year, month, day);
 };
 
+// Helper to normalize event titles for comparison (remove room numbers, class codes, etc.)
+const normalizeTitle = (title: string): string => {
+  // Remove leading numbers and room codes (e.g. "311 netl 5v.netl5" -> "netl 5v.netl5")
+  // Also remove # prefix
+  return title.replace(/^#?\s*\d+\s*/, '').toLowerCase().trim();
+};
+
+// Check if two events are similar enough to merge
+const areEventsSimilar = (a: CalendarEvent, b: CalendarEvent): boolean => {
+  // Must have overlapping or very close time slots (within 5 minutes)
+  const timeDiff = Math.abs(a.start.getTime() - b.start.getTime());
+  if (timeDiff > 5 * 60 * 1000) return false;
+
+  // Both should be ICS events (zermelo or outlook) for merging
+  if (!['zermelo', 'outlook'].includes(a.source) || !['zermelo', 'outlook'].includes(b.source)) return false;
+  if (a.source === b.source) return false; // Only merge different sources
+
+  // Normalize titles and check for similarity
+  const titleA = normalizeTitle(a.title);
+  const titleB = normalizeTitle(b.title);
+  
+  // Check if one contains the other or they share significant words
+  if (titleA.includes(titleB) || titleB.includes(titleA)) return true;
+  
+  // Check for common words (at least 2 significant words in common)
+  const wordsA = titleA.split(/[\s.]+/).filter(w => w.length > 2);
+  const wordsB = titleB.split(/[\s.]+/).filter(w => w.length > 2);
+  const commonWords = wordsA.filter(w => wordsB.includes(w));
+  
+  return commonWords.length >= 2;
+};
+
+// Deduplicate events with same time slots from different sources
+const deduplicateEvents = (events: CalendarEvent[]): CalendarEvent[] => {
+  const result: CalendarEvent[] = [];
+  const merged = new Set<string>();
+
+  for (let i = 0; i < events.length; i++) {
+    if (merged.has(events[i].id)) continue;
+
+    const current = events[i];
+    const similarEvents: CalendarEvent[] = [current];
+
+    // Find similar events
+    for (let j = i + 1; j < events.length; j++) {
+      if (merged.has(events[j].id)) continue;
+      if (areEventsSimilar(current, events[j])) {
+        similarEvents.push(events[j]);
+        merged.add(events[j].id);
+      }
+    }
+
+    if (similarEvents.length > 1) {
+      // Create merged event
+      const sources = [...new Set(similarEvents.map(e => e.source))];
+      const sourceLabels = sources.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' + ');
+      result.push({
+        ...current,
+        title: `${current.title} (${sourceLabels})`,
+        mergedSources: sources,
+      });
+    } else {
+      result.push(current);
+    }
+    merged.add(current.id);
+  }
+
+  return result;
+}
+
 const EVENT_COLORS = [
   { name: 'yellow', value: '#FBBF24' },
   { name: 'orange', value: '#F97316' },
@@ -146,11 +219,14 @@ const EVENT_TYPES = [
   { value: 'huiswerk', label: 'Huiswerk' },
   { value: 'proefwerk', label: 'Proefwerk' },
   { value: 'schoolexamen', label: 'Schoolexamen' },
+  { value: 'toets', label: 'Toets' },
   { value: 'studietijd', label: 'Studietijd' },
   { value: 'anders', label: 'Anders' },
 ];
 
 const Agenda = () => {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -215,6 +291,19 @@ const Agenda = () => {
   const [meetingLocation, setMeetingLocation] = useState('');
   const [meetingInvitees, setMeetingInvitees] = useState<string[]>([]);
   const [currentMeetingId, setCurrentMeetingId] = useState<string | null>(null);
+
+  // Handle URL date parameter
+  useEffect(() => {
+    const dateParam = searchParams.get('date');
+    if (dateParam) {
+      const parsedDate = parseISO(dateParam);
+      if (!isNaN(parsedDate.getTime())) {
+        setCurrentDate(parsedDate);
+        setSelectedDate(parsedDate);
+        setTimeFilter('dag');
+      }
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (user) {
@@ -539,6 +628,7 @@ const Agenda = () => {
         }
         return {
           id: `task-${task.id}`,
+          taskId: task.id,
           title: task.title,
           start: date,
           end: date,
@@ -624,7 +714,11 @@ const Agenda = () => {
         }
       }
 
-      setEvents([...localEvents, ...taskEvents, ...icsEvents, ...googleEvents]);
+      // Merge/deduplicate similar events from different sources (e.g. same lesson in Zermelo and Outlook)
+      const allEvents = [...localEvents, ...taskEvents, ...icsEvents, ...googleEvents];
+      const deduplicatedEvents = deduplicateEvents(allEvents);
+
+      setEvents(deduplicatedEvents);
     } catch (error) {
       console.error('Failed to load events:', error);
     } finally {
@@ -793,6 +887,12 @@ const Agenda = () => {
     resetMeetingFormAndClose();
   };
 
+  // State for editing tasks
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTaskTitle, setEditingTaskTitle] = useState('');
+  const [editingTaskDate, setEditingTaskDate] = useState('');
+  const [editingTaskTime, setEditingTaskTime] = useState('');
+
   // Click on event to open details
   const handleEventClick = (event: CalendarEvent, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -811,9 +911,46 @@ const Agenda = () => {
       setNewEventType(event.eventType || 'anders');
       setNewEventLocation(event.location || '');
       setCurrentEventId(event.dbId);
+      setEditingTaskId(null);
+    } else if (event.source === 'task' && event.taskId) {
+      // Populate form for editing task
+      setEditingTaskId(event.taskId);
+      setEditingTaskTitle(event.title);
+      setEditingTaskDate(format(event.start, 'yyyy-MM-dd'));
+      setEditingTaskTime(event.allDay ? '' : format(event.start, 'HH:mm'));
+      setCurrentEventId(null);
+    } else {
+      setEditingTaskId(null);
+      setCurrentEventId(null);
     }
     
     setSidebarMode('view');
+  };
+
+  // Save task edits
+  const saveTaskEdit = async () => {
+    if (!editingTaskId || !editingTaskTitle.trim()) return;
+    
+    setIsSaving(true);
+    try {
+      const { error } = await supabase.from("tasks").update({
+        title: editingTaskTitle.trim(),
+        due_date: editingTaskDate,
+        due_time: editingTaskTime || null,
+      }).eq('id', editingTaskId);
+
+      if (error) throw error;
+
+      toast.success("Taak bijgewerkt");
+      loadEvents();
+      setSelectedEvent(null);
+      setSidebarMode('events');
+    } catch (error) {
+      console.error("Failed to update task:", error);
+      toast.error("Kon taak niet bijwerken");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Drag handling for local events
@@ -1351,6 +1488,13 @@ const Agenda = () => {
                       className="text-lg font-semibold flex-1 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
                       placeholder="Gebeurtenis"
                     />
+                  ) : selectedEvent.source === 'task' ? (
+                    <Input
+                      value={editingTaskTitle}
+                      onChange={(e) => setEditingTaskTitle(e.target.value)}
+                      className="text-lg font-semibold flex-1 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
+                      placeholder="Taak"
+                    />
                   ) : (
                     <h3 className="text-lg font-semibold flex-1">{selectedEvent.title}</h3>
                   )}
@@ -1359,6 +1503,16 @@ const Agenda = () => {
                       size="sm"
                       onClick={saveSelectedEvent}
                       disabled={isSaving || !newEventTitle.trim()}
+                      className="rounded-full"
+                    >
+                      {isSaving ? 'Opslaan...' : 'Opslaan'}
+                    </Button>
+                  )}
+                  {selectedEvent.source === 'task' && (
+                    <Button
+                      size="sm"
+                      onClick={saveTaskEdit}
+                      disabled={isSaving || !editingTaskTitle.trim()}
                       className="rounded-full"
                     >
                       {isSaving ? 'Opslaan...' : 'Opslaan'}
@@ -1472,6 +1626,43 @@ const Agenda = () => {
                           </p>
                         </div>
                       </>
+                    ) : selectedEvent.source === 'task' ? (
+                      <>
+                        {/* Editable fields for tasks */}
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Datum</Label>
+                          <Input
+                            type="date"
+                            value={editingTaskDate}
+                            onChange={(e) => setEditingTaskDate(e.target.value)}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Tijd (optioneel)</Label>
+                          <Input
+                            type="time"
+                            value={editingTaskTime}
+                            onChange={(e) => setEditingTaskTime(e.target.value)}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Bron</Label>
+                          <span 
+                            className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: selectedEvent.color, color: 'white' }}
+                          >
+                            Taak
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-muted-foreground pt-2">
+                          Wijzigingen worden ook opgeslagen in Taken
+                        </p>
+                      </>
                     ) : (
                       <>
                         {/* Read-only view for imported events */}
@@ -1494,7 +1685,7 @@ const Agenda = () => {
                               className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full"
                               style={{ backgroundColor: selectedEvent.color, color: 'white' }}
                             >
-                              {selectedEvent.source === 'task' ? 'Taak' : selectedEvent.source === 'zermelo' ? 'Zermelo' : selectedEvent.source === 'google' ? 'Google' : selectedEvent.source === 'outlook' ? 'Outlook' : 'Lokaal'}
+                              {selectedEvent.source === 'zermelo' ? 'Zermelo' : selectedEvent.source === 'google' ? 'Google' : selectedEvent.source === 'outlook' ? 'Outlook' : 'Lokaal'}
                             </span>
                           </div>
 

@@ -183,7 +183,7 @@ const Account = () => {
     setUploadingAvatar(true);
     try {
       const fileExt = file.name.split('.').pop();
-      const filePath = `avatars/${user.id}-${Date.now()}.${fileExt}`;
+      const filePath = `${user.id}/avatars/${Date.now()}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('user-files')
@@ -229,7 +229,7 @@ const Account = () => {
     setUploadingBanner(true);
     try {
       const fileExt = file.name.split('.').pop();
-      const filePath = `banners/${user.id}-${Date.now()}.${fileExt}`;
+      const filePath = `${user.id}/banners/${Date.now()}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('user-files')
