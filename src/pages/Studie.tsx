@@ -6,11 +6,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Users, X, UserPlus, Play, Pause, Clock, ChevronLeft } from "lucide-react";
+import { Plus, Users, X, UserPlus, Play, Pause, Clock, ChevronLeft, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { format, startOfDay, endOfDay } from "date-fns";
+import { GroupChat } from "@/components/studie/GroupChat";
 
 interface StudyGroup {
   id: string;
@@ -28,6 +29,7 @@ interface GroupMember {
     username: string;
     full_name: string;
     display_name: string | null;
+    avatar_url: string | null;
   };
   isStudying?: boolean;
   todayStudyTime?: number;
@@ -70,12 +72,15 @@ export default function Studie() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [activeSessions, setActiveSessions] = useState<Map<string, StudySession>>(new Map());
   const [todayStudyTimes, setTodayStudyTimes] = useState<Map<string, number>>(new Map());
+  const [myTodayStudyMinutes, setMyTodayStudyMinutes] = useState(0);
+  const [showChat, setShowChat] = useState(false);
 
   useEffect(() => {
     if (user) {
       loadGroups();
       checkActiveSession();
       loadActiveSessions();
+      loadMyTodayStudyTime();
 
       // Subscribe to study session changes
       const channel = supabase
@@ -89,6 +94,7 @@ export default function Studie() {
           },
           () => {
             loadActiveSessions();
+            loadMyTodayStudyTime();
           }
         )
         .subscribe();
@@ -98,6 +104,31 @@ export default function Studie() {
       };
     }
   }, [user]);
+
+  const loadMyTodayStudyTime = async () => {
+    if (!user) return;
+    const today = new Date();
+    const dayStart = startOfDay(today).toISOString();
+    const dayEnd = endOfDay(today).toISOString();
+
+    const { data: sessions } = await supabase
+      .from("study_sessions")
+      .select("duration_minutes, is_active, started_at")
+      .eq("user_id", user.id)
+      .gte("started_at", dayStart)
+      .lte("started_at", dayEnd);
+
+    let totalMinutes = 0;
+    sessions?.forEach(session => {
+      if (session.is_active) {
+        const startTime = new Date(session.started_at).getTime();
+        totalMinutes += Math.floor((Date.now() - startTime) / 60000);
+      } else {
+        totalMinutes += session.duration_minutes || 0;
+      }
+    });
+    setMyTodayStudyMinutes(totalMinutes);
+  };
 
   // Timer update effect
   useEffect(() => {
@@ -314,7 +345,7 @@ export default function Studie() {
           const userIds = members.map(m => m.user_id);
           const { data: profiles } = await supabase
             .from("profiles")
-            .select("user_id, username, full_name, display_name")
+            .select("user_id, username, full_name, display_name, avatar_url")
             .in("user_id", userIds);
 
           enrichedMembers = members.map(m => ({
@@ -750,6 +781,9 @@ export default function Studie() {
                 <h2 className="text-2xl font-bold">Studietimer</h2>
                 <p className="text-muted-foreground">
                   {isStudying ? 'Je bent aan het studeren' : 'Start een studiesessie'}
+                </p>
+                <p className="text-sm text-primary font-medium mt-1">
+                  Vandaag: {formatMinutes(myTodayStudyMinutes + (isStudying ? Math.floor(elapsedTime / 60) : 0))} gestudeerd
                 </p>
               </div>
             </div>

@@ -1,9 +1,14 @@
-import { useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useOutletContext, useNavigate } from 'react-router-dom';
 import { getStoredAccessToken } from '@/auth/spotifyAuth';
 import { MusicRecommendations } from '@/components/MusicRecommendations';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { format, startOfDay, endOfDay } from 'date-fns';
+import { nl } from 'date-fns/locale';
+import { BookOpen, FileText, GraduationCap } from 'lucide-react';
 
 type TimeFilter = 'dag' | 'week' | 'maand';
 
@@ -18,96 +23,137 @@ interface OutletContextType {
   setCurrentContext: (name: string, type: 'artist' | 'playlist') => void;
 }
 
+interface UpcomingTest {
+  id: string;
+  title: string;
+  start_time: string;
+  event_type: string;
+  color: string;
+}
+
 export default function Dashboard() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const accessToken = getStoredAccessToken();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('dag');
   const { deviceId, setCurrentContext } = useOutletContext<OutletContextType>() || {};
+  
+  const [studyProgress, setStudyProgress] = useState(0);
+  const [studyGoal, setStudyGoal] = useState(120);
+  const [todayStudyMinutes, setTodayStudyMinutes] = useState(0);
+  const [upcomingTests, setUpcomingTests] = useState<UpcomingTest[]>([]);
+  const [loadingTests, setLoadingTests] = useState(true);
+
+  useEffect(() => {
+    if (user) {
+      loadStudyProgress();
+      loadUpcomingTests();
+    }
+  }, [user]);
+
+  const loadStudyProgress = async () => {
+    if (!user) return;
+    const { data: profile } = await supabase.from("profiles").select("study_goal_minutes").eq("user_id", user.id).single();
+    if (profile?.study_goal_minutes) setStudyGoal(profile.study_goal_minutes);
+
+    const today = new Date();
+    const { data: sessions } = await supabase.from("study_sessions").select("duration_minutes, is_active, started_at").eq("user_id", user.id).gte("started_at", startOfDay(today).toISOString()).lte("started_at", endOfDay(today).toISOString());
+
+    let totalMinutes = 0;
+    sessions?.forEach(session => {
+      totalMinutes += session.is_active ? Math.floor((Date.now() - new Date(session.started_at).getTime()) / 60000) : (session.duration_minutes || 0);
+    });
+    setTodayStudyMinutes(totalMinutes);
+    setStudyProgress(Math.min(100, Math.round((totalMinutes / (profile?.study_goal_minutes || 120)) * 100)));
+  };
+
+  const loadUpcomingTests = async () => {
+    if (!user) return;
+    setLoadingTests(true);
+    try {
+      const { data } = await supabase.from("calendar_events").select("id, title, start_time, event_type, color").eq("user_id", user.id).in("event_type", ["proefwerk", "schoolexamen", "project", "toets"]).gte("start_time", new Date().toISOString()).order("start_time", { ascending: true }).limit(3);
+      setUpcomingTests(data || []);
+    } finally {
+      setLoadingTests(false);
+    }
+  };
+
+  const getProgressLabel = () => {
+    if (studyProgress >= 100) return { text: "Doel bereikt!", className: "bg-green-100 text-green-800" };
+    if (studyProgress >= 70) return { text: "Goed bezig", className: "bg-blue-100 text-blue-800" };
+    return { text: "Achter op schema", className: "bg-yellow-100 text-yellow-800" };
+  };
+
+  const formatStudyTime = (minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    return hours > 0 ? `${hours}u ${minutes % 60}m` : `${minutes}m`;
+  };
+
+  const getEventIcon = (eventType: string) => {
+    if (eventType === 'proefwerk' || eventType === 'toets') return <FileText className="w-4 h-4" />;
+    if (eventType === 'schoolexamen') return <GraduationCap className="w-4 h-4" />;
+    return <BookOpen className="w-4 h-4" />;
+  };
+
+  const progressLabel = getProgressLabel();
 
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-4xl font-bold text-foreground">{filterTitles[timeFilter]}</h1>
-          
-          {/* macOS-style segmented control */}
           <div className="flex bg-muted rounded-lg p-1 gap-0.5">
             {(['dag', 'week', 'maand'] as TimeFilter[]).map((filter) => (
-              <button
-                key={filter}
-                onClick={() => setTimeFilter(filter)}
-                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-                  timeFilter === filter
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
+              <button key={filter} onClick={() => setTimeFilter(filter)} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${timeFilter === filter ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
                 {filter === 'dag' ? 'Dag' : filter === 'week' ? 'Week' : 'Maand'}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Top Cards Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Aankomende toetsen */}
           <Card>
             <CardContent className="p-6">
               <h3 className="text-lg font-semibold text-foreground mb-4">Aankomende toetsen</h3>
-              <p className="text-sm text-muted-foreground">Geen aankomende toetsen</p>
+              {loadingTests ? <div className="animate-pulse space-y-3">{[1,2,3].map(i => <div key={i} className="h-12 bg-muted rounded-lg" />)}</div> : upcomingTests.length === 0 ? <p className="text-sm text-muted-foreground">Geen aankomende toetsen</p> : (
+                <div className="space-y-3">
+                  {upcomingTests.map((test) => (
+                    <button key={test.id} onClick={() => navigate('/agenda')} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-colors text-left">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: `${test.color}20` }}>
+                        <div style={{ color: test.color }}>{getEventIcon(test.event_type)}</div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{test.title}</p>
+                        <p className="text-xs text-muted-foreground">{format(new Date(test.start_time), "EEEE d MMMM, HH:mm", { locale: nl })}</p>
+                      </div>
+                      <span className="text-xs px-2 py-1 rounded-full bg-muted capitalize">{test.event_type}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
-
-          {/* Je laatste cijfers */}
-          <Card>
-            <CardContent className="p-6">
-              <h3 className="text-lg font-semibold text-foreground mb-4">Je laatste cijfers</h3>
-              <p className="text-sm text-muted-foreground">Nog geen cijfers toegevoegd</p>
-            </CardContent>
-          </Card>
+          <Card><CardContent className="p-6"><h3 className="text-lg font-semibold text-foreground mb-4">Je laatste cijfers</h3><p className="text-sm text-muted-foreground">Nog geen cijfers toegevoegd</p></CardContent></Card>
         </div>
 
-        {/* Study Progress Card */}
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <h3 className="text-lg font-semibold text-foreground">Je studievoortgang vandaag</h3>
-                <span className="text-xs font-medium bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
-                  Achter op schema
-                </span>
+                <span className={`text-xs font-medium px-2 py-1 rounded-full ${progressLabel.className}`}>{progressLabel.text}</span>
               </div>
               <div className="text-right">
-                <p className="text-sm text-muted-foreground mb-1">Voortgang</p>
-                <p className="text-2xl font-bold text-primary">15%</p>
+                <p className="text-sm text-muted-foreground mb-1">{formatStudyTime(todayStudyMinutes)} / {formatStudyTime(studyGoal)}</p>
+                <p className="text-2xl font-bold text-primary">{studyProgress}%</p>
               </div>
             </div>
-            <div className="w-full bg-muted rounded-full h-2">
-              <div className="bg-primary h-2 rounded-full" style={{ width: '15%' }}></div>
-            </div>
+            <div className="w-full bg-muted rounded-full h-2"><div className="bg-primary h-2 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, studyProgress)}%` }} /></div>
           </CardContent>
         </Card>
 
-        {/* Music Recommendations */}
-        {accessToken ? (
-          <MusicRecommendations 
-            deviceId={deviceId || null}
-            onContextChange={(name, type) => setCurrentContext?.(name, type)}
-          />
-        ) : (
-          <Card>
-            <CardContent className="p-6">
-              <div className="text-center py-8">
-                <h3 className="text-xl font-semibold text-foreground mb-2">Aanbevolen studiemuziek</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Log in met Spotify om gepersonaliseerde muziekaanbevelingen te zien
-                </p>
-                <Button onClick={() => window.location.href = '/instellingen'}>
-                  Verbind met Spotify
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+        {accessToken ? <MusicRecommendations deviceId={deviceId || null} onContextChange={(name, type) => setCurrentContext?.(name, type)} /> : (
+          <Card><CardContent className="p-6"><div className="text-center py-8"><h3 className="text-xl font-semibold text-foreground mb-2">Aanbevolen studiemuziek</h3><p className="text-sm text-muted-foreground mb-4">Log in met Spotify om gepersonaliseerde muziekaanbevelingen te zien</p><Button onClick={() => window.location.href = '/instellingen'}>Verbind met Spotify</Button></div></CardContent></Card>
         )}
       </div>
     </div>
